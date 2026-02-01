@@ -1,0 +1,20 @@
+[package]
+name = "frontend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+web-sys = { version = "*", features = [
+    "HtmlTextAreaElement",
+    "HtmlInputElement",
+    "Element",
+    "Window",
+    "Document",
+] }
+uuid = { version = "*", features = ["v4", "serde", "js"] }
+yew = { version = "*", features = ["csr"] }
+shared = { path = "../shared" }
+gloo-storage = "*"
+wasm-streams = "*"
+gloo-net = "*"
+futures = "*"

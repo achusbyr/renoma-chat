@@ -1,0 +1,15 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tower-http = { version = "*", features = ["fs", "trace", "cors"] }
+async-openai = { version = "*", features = ["chat-completion"] }
+uuid = { version = "*", features = ["v4", "serde"] }
+serde = { version = "*", features = ["derive"] }
+shared = { path = "../shared" }
+async-stream = "*"
+serde_json = "*"
+futures = "*"
+axum = "*"
