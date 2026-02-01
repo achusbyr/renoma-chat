@@ -42,11 +42,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             tokio::fs::create_dir_all("Renoma/dist").await?;
             tokio::fs::copy("target/release/renoma-launcher", "Renoma/renoma-launcher").await?;
-            while let Some(file) = tokio::fs::read_dir("frontend/dist")
-                .await?
-                .next_entry()
-                .await?
-            {
+            let mut dist_dir = tokio::fs::read_dir("frontend/dist").await?;
+            while let Some(file) = dist_dir.next_entry().await? {
                 tokio::fs::copy(
                     file.path(),
                     format!("Renoma/dist/{}", file.file_name().to_str().unwrap()),
