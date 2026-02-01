@@ -37,4 +37,4 @@ COPY --from=builder /usr/src/renoma/Renoma /app
 
 EXPOSE 8080
 
-CMD ["./renoma-launcher"]
+ENTRYPOINT ["./renoma-launcher"]
