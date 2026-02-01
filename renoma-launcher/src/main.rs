@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli::Cli::parse();
     let router =
         Router::new().fallback_service(ServeDir::new(cli.dist_dir.unwrap_or("dist".into())));
-    let addr = SocketAddr::from(([127, 0, 0, 1], cli.port.unwrap_or(8080)));
+    let addr = SocketAddr::from(([0, 0, 0, 0], cli.port.unwrap_or(8080)));
     tracing::info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     let router = backend::init(router);

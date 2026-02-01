@@ -40,13 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             cmd.arg("build").arg("--release");
             cmd.spawn()?.wait().await?;
 
-            tokio::fs::create_dir("Renoma").await?;
-            tokio::fs::create_dir("Renoma/dist").await?;
-            tokio::fs::copy(
-                "renoma-launcher/target/release/renoma-launcher",
-                "Renoma/renoma-launcher",
-            )
-            .await?;
+            tokio::fs::create_dir_all("Renoma/dist").await?;
+            tokio::fs::copy("target/release/renoma-launcher", "Renoma/renoma-launcher").await?;
             while let Some(file) = tokio::fs::read_dir("frontend/dist")
                 .await?
                 .next_entry()
