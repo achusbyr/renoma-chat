@@ -1,4 +1,4 @@
-use crate::db::AppState;
+use crate::dbs::local::AppState;
 use async_openai::{
     Client,
     config::OpenAIConfig,
@@ -36,15 +36,15 @@ pub async fn generate_response(
     let client = Client::with_config(config);
 
     // Fetch conversation history and character prompt
-    let (messages, character) = {
-        let db = state.db.read().unwrap();
-        let chat = db.chats.iter().find(|c| c.id == payload.chat_id);
-        let character = chat.and_then(|c| db.characters.iter().find(|ch| ch.id == c.character_id));
-        (
-            chat.map(|c| c.messages.clone()).unwrap_or_default(),
-            character.cloned(),
-        )
-    };
+    let chat = state.db.get_chat(payload.chat_id).await;
+
+    if chat.is_none() {
+        return (axum::http::StatusCode::NOT_FOUND, "Chat not found").into_response();
+    }
+    let chat = chat.unwrap();
+
+    let character = state.db.get_character(chat.character_id).await;
+    let messages = chat.messages.clone();
 
     let mut conversation: Vec<ChatCompletionRequestMessage> = messages
         .into_iter()
@@ -98,12 +98,15 @@ pub async fn generate_response(
     match response_stream {
         Ok(mut stream) => {
             let body = axum::body::Body::from_stream(async_stream::stream! {
+                let mut full_response = String::new();
+
                 while let Some(result) = stream.next().await {
                     match result {
                         Ok(response) => {
                             if let Some(choice) = response.choices.first()
                                 && let Some(content) = &choice.delta.content {
-                                    yield Ok::<std::string::String, Error>(format!("data: {}\n\n", content));
+                                    full_response.push_str(content);
+                                    yield Ok::<String, Error>(format!("data: {}\n\n", content));
                                 }
                         }
                         Err(e) => {
@@ -111,6 +114,15 @@ pub async fn generate_response(
                         }
                     }
                 }
+
+                // Persist the full response to the database
+                if !full_response.is_empty() {
+                    state.db.append_message(payload.chat_id, shared::models::ChatMessage {
+                         role: "assistant".to_string(),
+                         content: full_response,
+                    }).await;
+                }
+
                 yield Ok("data: [DONE]\n\n".to_string());
             });
 

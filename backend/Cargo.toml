@@ -10,6 +10,7 @@ uuid = { version = "*", features = ["v4", "serde"] }
 serde = { version = "*", features = ["derive"] }
 shared = { path = "../shared" }
 async-stream = "*"
+async-trait = "*"
 serde_json = "*"
 futures = "*"
 axum = "*"

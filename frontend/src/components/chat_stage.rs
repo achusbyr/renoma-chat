@@ -3,7 +3,7 @@ use crate::store::{Action, StoreContext};
 use futures::StreamExt;
 use gloo_net::http::Request;
 use shared::models::{ChatMessage, GenerateRequest};
-use web_sys::{Element, HtmlTextAreaElement};
+use web_sys::{Element, HtmlTextAreaElement, js_sys};
 use yew::prelude::*;
 
 #[function_component(ChatStage)]
@@ -62,7 +62,11 @@ pub fn chat_stage() -> Html {
             let store = store.clone();
             yew::platform::spawn_local(async move {
                 // Save user message to backend
-                let _ = api::send_message(chat_id, text).await;
+                if let Err(e) = api::send_message(chat_id, text).await {
+                    tracing::error!("Failed to send message: {:?}", e);
+                    store.dispatch(Action::SetGenerating(false));
+                    return;
+                }
 
                 // Start Stream
                 let payload = GenerateRequest {
@@ -74,36 +78,62 @@ pub fn chat_stage() -> Html {
                     max_tokens: Some(settings.max_tokens),
                 };
 
-                // Use gloo-net raw request for body streaming (feature might vary)
-                // or plain fetch. Here using a custom loop for SSE parsing manually.
-                let req = Request::post("/api/generate").json(&payload).unwrap();
+                let req = match Request::post("/api/generate").json(&payload) {
+                    Ok(req) => req,
+                    Err(e) => {
+                        tracing::error!("Failed to create request: {:?}", e);
+                        store.dispatch(Action::SetGenerating(false));
+                        return;
+                    }
+                };
 
-                // Note: In a real prod app you might wrap this better,
-                // but here is raw logic to read the body stream
-                let resp = req.send().await.unwrap();
+                let resp = match req.send().await {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        tracing::error!("Failed to send generate request: {:?}", e);
+                        store.dispatch(Action::UpdateLastMessage(format!("[Error: {}]", e)));
+                        store.dispatch(Action::SetGenerating(false));
+                        return;
+                    }
+                };
 
                 if let Some(body) = resp.body() {
                     let mut stream = wasm_streams::ReadableStream::from_raw(body).into_stream();
                     let mut full_response = String::new();
-                    let mut buffer = String::new();
+                    let mut buffer = Vec::new();
 
-                    while let Some(Ok(chunk)) = stream.next().await {
-                        let chunk_text = chunk.as_string().unwrap_or_default();
-                        // This is a naive SSE parser for the specific backend format
-                        // Backend sends: "data: token\n"
-                        buffer.push_str(&chunk_text);
-
-                        let lines: Vec<&str> = buffer.split('\n').collect();
-                        // Keep the last incomplete part
-                        let last_idx = lines.len() - 1;
-
-                        for (i, line) in lines.iter().enumerate() {
-                            if i == last_idx {
-                                buffer = line.to_string();
+                    while let Some(result) = stream.next().await {
+                        let chunk = match result {
+                            Ok(chunk) => chunk,
+                            Err(e) => {
+                                tracing::error!("Stream error: {:?}", e);
                                 break;
                             }
+                        };
+
+                        // Convert Uint8Array to bytes
+                        let bytes = js_sys::Uint8Array::new(&chunk).to_vec();
+                        buffer.extend_from_slice(&bytes);
+
+                        // Process buffer for lines
+                        while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                            let line_bytes = buffer.drain(..pos + 1).collect::<Vec<u8>>();
+                            let line = String::from_utf8_lossy(&line_bytes);
+                            let line = line.trim();
+
+                            if line.is_empty() {
+                                continue;
+                            }
+
                             if let Some(data) = line.strip_prefix("data: ") {
                                 if data == "[DONE]" {
+                                    break;
+                                }
+                                if data.starts_with("[ERROR]") {
+                                    tracing::error!("Backend error in stream: {}", data);
+                                    full_response.push_str(data);
+                                    store
+                                        .dispatch(Action::UpdateLastMessage(full_response.clone()));
                                     break;
                                 }
                                 full_response.push_str(data);
@@ -135,7 +165,6 @@ pub fn chat_stage() -> Html {
         .map(|c| c.name.clone())
         .unwrap_or("AI".to_string());
 
-    html! {
     html! {
         <div class="main-stage">
             // Header
@@ -195,6 +224,5 @@ pub fn chat_stage() -> Html {
                 </div>
             </div>
         </div>
-    }
     }
 }

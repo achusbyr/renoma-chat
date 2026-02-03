@@ -1,10 +1,10 @@
-use crate::db::AppState;
+use crate::dbs::local::AppState;
 use axum::{Json, extract::State};
 use shared::models::*;
 
 pub async fn list_characters(State(state): State<AppState>) -> Json<Vec<Character>> {
-    let db = state.db.read().unwrap();
-    Json(db.characters.clone())
+    let characters = state.db.get_characters().await;
+    Json(characters)
 }
 
 pub async fn create_character(
@@ -22,11 +22,7 @@ pub async fn create_character(
         example_messages: payload.example_messages,
     };
 
-    {
-        let mut db = state.db.write().unwrap();
-        db.characters.push(char.clone());
-        db.save();
-    }
+    state.db.create_character(char.clone()).await;
 
     Json(char)
 }
@@ -35,22 +31,10 @@ pub async fn list_chats(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Json<Vec<Chat>> {
-    let db = state.db.read().unwrap();
     let char_id_str = params.get("character_id");
+    let char_id = char_id_str.and_then(|s| uuid::Uuid::parse_str(s).ok());
 
-    let result = if let Some(cid_str) = char_id_str {
-        if let Ok(cid) = uuid::Uuid::parse_str(cid_str) {
-            db.chats
-                .iter()
-                .filter(|c| c.character_id == cid)
-                .cloned()
-                .collect()
-        } else {
-            Vec::new()
-        }
-    } else {
-        db.chats.clone()
-    };
+    let result = state.db.get_chats(char_id).await;
 
     Json(result)
 }
@@ -62,19 +46,13 @@ pub async fn create_chat(
     let id = uuid::Uuid::new_v4();
     let mut messages = Vec::new();
 
+    if let Some(char) = state.db.get_character(payload.character_id).await
+        && !char.first_message.is_empty()
     {
-        let db_read = state.db.read().unwrap();
-        if let Some(char) = db_read
-            .characters
-            .iter()
-            .find(|c| c.id == payload.character_id)
-            && !char.first_message.is_empty()
-        {
-            messages.push(ChatMessage {
-                role: "assistant".to_string(),
-                content: char.first_message.clone(),
-            });
-        }
+        messages.push(ChatMessage {
+            role: "assistant".to_string(),
+            content: char.first_message,
+        });
     }
 
     let chat = Chat {
@@ -83,11 +61,7 @@ pub async fn create_chat(
         messages,
     };
 
-    {
-        let mut db = state.db.write().unwrap();
-        db.chats.push(chat.clone());
-        db.save();
-    }
+    state.db.create_chat(chat.clone()).await;
 
     Json(chat)
 }
@@ -97,11 +71,6 @@ pub async fn append_message(
     axum::extract::Path(chat_id): axum::extract::Path<uuid::Uuid>,
     Json(payload): Json<ChatMessage>,
 ) -> Json<()> {
-    let mut db = state.db.write().unwrap();
-    if let Some(chat) = db.chats.iter_mut().find(|c| c.id == chat_id) {
-        chat.messages.push(payload);
-        db.save();
-    }
-
+    state.db.append_message(chat_id, payload).await;
     Json(())
 }
