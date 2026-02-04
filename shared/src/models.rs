@@ -88,7 +88,7 @@ pub struct Chat {
     pub character_id: Uuid,
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
-    pub participants: Vec<ChatParticipant>, // Group chat participants
+    pub participants: Vec<ChatParticipant>,
 }
 
 // Request payloads
@@ -108,8 +108,10 @@ pub struct CreateChatRequest {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct GenerateRequest {
+pub struct CompletionRequest {
     pub chat_id: Uuid,
+    pub regenerate: bool,
+    pub message_id: Option<Uuid>,
     pub api_key: String,
     pub api_base: Option<String>,
     pub model: String,
@@ -120,17 +122,6 @@ pub struct GenerateRequest {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EditMessageRequest {
     pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct RegenerateRequest {
-    pub chat_id: Uuid,
-    pub message_id: Uuid,
-    pub api_key: String,
-    pub api_base: Option<String>,
-    pub model: String,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

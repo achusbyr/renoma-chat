@@ -4,7 +4,7 @@ use shared::models::*;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
-const DB_PATH: &str = "db.json";
+pub static DB_PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct LocalDatabase {
@@ -31,7 +31,12 @@ pub trait Database: Send + Sync {
 
 impl LocalDatabase {
     pub fn load() -> Self {
-        if let Ok(content) = std::fs::read_to_string(DB_PATH) {
+        let content = if let Some(path) = DB_PATH.get() {
+            std::fs::read_to_string(path).ok()
+        } else {
+            None
+        };
+        if let Some(content) = content {
             serde_json::from_str(&content).unwrap_or_default()
         } else {
             Self::default()
@@ -39,8 +44,10 @@ impl LocalDatabase {
     }
 
     pub fn save(&self) {
-        if let Ok(content) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(DB_PATH, content);
+        if let Some(path) = DB_PATH.get()
+            && let Ok(content) = serde_json::to_string_pretty(self)
+        {
+            let _ = std::fs::write(path, content);
         }
     }
 }

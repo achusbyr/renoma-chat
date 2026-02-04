@@ -3,8 +3,10 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 pub struct Cli {
-    #[arg(short, long, default_value_t = 8080)]
+    #[arg(long, default_value_t = 8080)]
     pub port: u16,
-    #[arg(short, long)]
-    pub dist_dir: Option<PathBuf>,
+    #[arg(long, default_value = "dist")]
+    pub dist_dir: PathBuf,
+    #[arg(long)]
+    pub local_db_path: Option<PathBuf>,
 }

@@ -10,7 +10,7 @@ use async_openai::{
 };
 use axum::{Json, extract::State, response::IntoResponse};
 use futures::StreamExt;
-use shared::models::{GenerateRequest, RegenerateRequest};
+use shared::models::CompletionRequest;
 use std::io::Error;
 
 const DEFAULT_API_BASE: &str = "https://openrouter.ai/api/v1";
@@ -77,7 +77,7 @@ fn build_conversation(
 
 pub async fn generate_response(
     State(state): State<AppState>,
-    Json(payload): Json<GenerateRequest>,
+    Json(payload): Json<CompletionRequest>,
 ) -> axum::response::Response {
     let api_key = if payload.api_key.is_empty() {
         return (axum::http::StatusCode::UNAUTHORIZED, "Missing API Key").into_response();
@@ -87,6 +87,7 @@ pub async fn generate_response(
 
     let api_base = payload
         .api_base
+        .clone()
         .unwrap_or_else(|| DEFAULT_API_BASE.to_string());
 
     let config = OpenAIConfig::new()
@@ -103,11 +104,30 @@ pub async fn generate_response(
     }
     let chat = chat.unwrap();
 
+    // Determine if we need to truncate for regeneration
+    let truncate_at = if payload.regenerate {
+        if let Some(msg_id) = payload.message_id {
+            // Check that the message exists
+            if !chat.messages.iter().any(|m| m.id == msg_id) {
+                return (axum::http::StatusCode::NOT_FOUND, "Message not found").into_response();
+            }
+            Some(msg_id)
+        } else {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                "Missing message_id for regeneration",
+            )
+                .into_response();
+        }
+    } else {
+        None
+    };
+
     let character = state.db.get_character(chat.character_id).await;
-    let conversation = build_conversation(&chat.messages, character.as_ref(), None);
+    let conversation = build_conversation(&chat.messages, character.as_ref(), truncate_at);
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model(payload.model)
+        .model(payload.model.clone())
         .messages(conversation)
         .temperature(payload.temperature.unwrap_or(0.7))
         .max_tokens(payload.max_tokens.unwrap_or(4096))
@@ -138,109 +158,11 @@ pub async fn generate_response(
 
                 // Persist the full response to the database
                 if !full_response.is_empty() {
-                    state.db.append_message(payload.chat_id, shared::models::ChatMessage::new("assistant", full_response)).await;
-                }
-
-                yield Ok("data: [DONE]\n\n".to_string());
-            });
-
-            let response = axum::response::Response::builder()
-                .header("Content-Type", "text/event-stream")
-                .header("Cache-Control", "no-cache")
-                .header("Connection", "keep-alive")
-                .body(body);
-
-            match response {
-                Ok(resp) => resp,
-                Err(e) => (
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Response Builder Error: {}", e),
-                )
-                    .into_response(),
-            }
-        }
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("OpenAI Error: {}", e),
-        )
-            .into_response(),
-    }
-}
-
-/// Regenerate a specific message - adds the result as an alternative to an existing message
-pub async fn regenerate_response(
-    State(state): State<AppState>,
-    Json(payload): Json<RegenerateRequest>,
-) -> axum::response::Response {
-    let api_key = if payload.api_key.is_empty() {
-        return (axum::http::StatusCode::UNAUTHORIZED, "Missing API Key").into_response();
-    } else {
-        payload.api_key.clone()
-    };
-
-    let api_base = payload
-        .api_base
-        .unwrap_or_else(|| DEFAULT_API_BASE.to_string());
-
-    let config = OpenAIConfig::new()
-        .with_api_key(api_key)
-        .with_api_base(api_base);
-
-    let client = Client::with_config(config);
-
-    // Fetch conversation history and character prompt
-    let chat = state.db.get_chat(payload.chat_id).await;
-
-    if chat.is_none() {
-        return (axum::http::StatusCode::NOT_FOUND, "Chat not found").into_response();
-    }
-    let chat = chat.unwrap();
-
-    // Check that the message exists
-    let target_message = chat.messages.iter().find(|m| m.id == payload.message_id);
-    if target_message.is_none() {
-        return (axum::http::StatusCode::NOT_FOUND, "Message not found").into_response();
-    }
-
-    let character = state.db.get_character(chat.character_id).await;
-
-    // Build conversation up to (but not including) the message to regenerate
-    let conversation =
-        build_conversation(&chat.messages, character.as_ref(), Some(payload.message_id));
-
-    let request = CreateChatCompletionRequestArgs::default()
-        .model(payload.model)
-        .messages(conversation)
-        .temperature(payload.temperature.unwrap_or(0.7))
-        .max_tokens(payload.max_tokens.unwrap_or(4096))
-        .build()
-        .unwrap();
-
-    let response_stream = client.chat().create_stream(request).await;
-
-    match response_stream {
-        Ok(mut stream) => {
-            let body = axum::body::Body::from_stream(async_stream::stream! {
-                let mut full_response = String::new();
-
-                while let Some(result) = stream.next().await {
-                    match result {
-                        Ok(response) => {
-                            if let Some(choice) = response.choices.first()
-                                && let Some(content) = &choice.delta.content {
-                                    full_response.push_str(content);
-                                    yield Ok::<String, Error>(format!("data: {}\n\n", content));
-                                }
-                        }
-                        Err(e) => {
-                            yield Ok(format!("data: [ERROR] {}\n\n", e));
-                        }
+                    if payload.regenerate && let Some(msg_id) = payload.message_id {
+                        state.db.append_alternative(payload.chat_id, msg_id, full_response).await;
+                    } else {
+                        state.db.append_message(payload.chat_id, shared::models::ChatMessage::new("assistant", full_response)).await;
                     }
-                }
-
-                // Add as alternative to the existing message instead of creating new
-                if !full_response.is_empty() {
-                    state.db.append_alternative(payload.chat_id, payload.message_id, full_response).await;
                 }
 
                 yield Ok("data: [DONE]\n\n".to_string());

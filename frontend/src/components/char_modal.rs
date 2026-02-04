@@ -76,7 +76,7 @@ pub fn char_modal() -> Html {
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">{"Short Description"}</label>
+                        <label class="form-label">{"Description"}</label>
                         <textarea class="form-textarea" rows="2" placeholder="A brief summary of who they are..." oninput={Callback::from(move |e: InputEvent| {
                             let i: web_sys::HtmlTextAreaElement = e.target_unchecked_into();
                             desc.set(i.value());

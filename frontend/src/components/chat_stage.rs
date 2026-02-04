@@ -2,7 +2,7 @@ use crate::api;
 use crate::store::{Action, StoreContext};
 use futures::StreamExt;
 use gloo_net::http::Request;
-use shared::models::{ChatMessage, GenerateRequest};
+use shared::models::{ChatMessage, CompletionRequest};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Element, HtmlTextAreaElement, js_sys};
 use yew::prelude::*;
@@ -152,90 +152,20 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
             if let Some(chat) = chat {
                 store.dispatch(Action::SetRegenerating(Some(message_id)));
 
-                yew::platform::spawn_local(async move {
-                    // Start regeneration stream
-                    let payload = shared::models::RegenerateRequest {
+                yew::platform::spawn_local(process_completion_stream(
+                    store,
+                    CompletionRequest {
                         chat_id: chat.id,
-                        message_id,
+                        regenerate: true,
+                        message_id: Some(message_id),
                         api_key: settings.api_key,
                         api_base: Some(settings.api_base),
                         model: settings.model,
                         temperature: Some(settings.temperature),
                         max_tokens: Some(settings.max_tokens),
-                    };
-
-                    let req = match Request::post("/api/regenerate").json(&payload) {
-                        Ok(req) => req,
-                        Err(e) => {
-                            tracing::error!("Failed to create regenerate request: {:?}", e);
-                            store.dispatch(Action::SetRegenerating(None));
-                            return;
-                        }
-                    };
-
-                    let resp = match req.send().await {
-                        Ok(resp) => resp,
-                        Err(e) => {
-                            tracing::error!("Failed to send regenerate request: {:?}", e);
-                            store.dispatch(Action::SetRegenerating(None));
-                            return;
-                        }
-                    };
-
-                    if let Some(body) = resp.body() {
-                        let mut stream = wasm_streams::ReadableStream::from_raw(body).into_stream();
-                        let mut full_response = String::new();
-                        let mut buffer = Vec::new();
-
-                        while let Some(result) = stream.next().await {
-                            let chunk = match result {
-                                Ok(chunk) => chunk,
-                                Err(e) => {
-                                    tracing::error!("Stream error: {:?}", e);
-                                    break;
-                                }
-                            };
-
-                            let bytes = js_sys::Uint8Array::new(&chunk).to_vec();
-                            buffer.extend_from_slice(&bytes);
-
-                            while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
-                                let line_bytes = buffer.drain(..pos + 1).collect::<Vec<u8>>();
-                                let line = String::from_utf8_lossy(&line_bytes);
-                                let line = line.trim();
-
-                                if line.is_empty() {
-                                    continue;
-                                }
-
-                                if let Some(data) = line.strip_prefix("data: ") {
-                                    if data == "[DONE]" {
-                                        break;
-                                    }
-                                    if data.starts_with("[ERROR]") {
-                                        tracing::error!("Backend error in stream: {}", data);
-                                        break;
-                                    }
-                                    full_response.push_str(data);
-                                    store.dispatch(Action::UpdateMessageContent {
-                                        message_id,
-                                        content: full_response.clone(),
-                                    });
-                                }
-                            }
-                        }
-
-                        // Add as alternative when done
-                        if !full_response.is_empty() {
-                            store.dispatch(Action::AppendAlternative {
-                                message_id,
-                                content: full_response,
-                            });
-                        }
-                    }
-
-                    store.dispatch(Action::SetRegenerating(None));
-                });
+                    },
+                    message_id,
+                ));
             }
         })
     };
@@ -338,8 +268,12 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
                         <div class="message-edit-hint">{"Ctrl+Enter to save, Escape to cancel"}</div>
                     </div>
                 } else {
-                    <div class="message-text" style="white-space: pre-wrap;">
-                        { if is_regenerating && display_content.is_empty() { "..." } else { &display_content } }
+                    <div class="message-text">
+                        if is_regenerating && display_content.is_empty() {
+                            <div class="regenerating-dots">{"..."}</div>
+                        } else {
+                            <super::markdown::Markdown content={display_content} />
+                        }
                     </div>
                 }
 
@@ -465,89 +399,21 @@ pub fn chat_stage() -> Html {
                 }
 
                 // Start Stream
-                let payload = GenerateRequest {
-                    chat_id,
-                    api_key: settings.api_key,
-                    api_base: Some(settings.api_base),
-                    model: settings.model,
-                    temperature: Some(settings.temperature),
-                    max_tokens: Some(settings.max_tokens),
-                };
-
-                let req = match Request::post("/api/generate").json(&payload) {
-                    Ok(req) => req,
-                    Err(e) => {
-                        tracing::error!("Failed to create request: {:?}", e);
-                        store.dispatch(Action::SetGenerating(false));
-                        return;
-                    }
-                };
-
-                let resp = match req.send().await {
-                    Ok(resp) => resp,
-                    Err(e) => {
-                        tracing::error!("Failed to send generate request: {:?}", e);
-                        store.dispatch(Action::UpdateMessageContent {
-                            message_id: assistant_msg_id,
-                            content: format!("[Error: {}]", e),
-                        });
-                        store.dispatch(Action::SetGenerating(false));
-                        return;
-                    }
-                };
-
-                if let Some(body) = resp.body() {
-                    let mut stream = wasm_streams::ReadableStream::from_raw(body).into_stream();
-                    let mut full_response = String::new();
-                    let mut buffer = Vec::new();
-
-                    while let Some(result) = stream.next().await {
-                        let chunk = match result {
-                            Ok(chunk) => chunk,
-                            Err(e) => {
-                                tracing::error!("Stream error: {:?}", e);
-                                break;
-                            }
-                        };
-
-                        // Convert Uint8Array to bytes
-                        let bytes = js_sys::Uint8Array::new(&chunk).to_vec();
-                        buffer.extend_from_slice(&bytes);
-
-                        // Process buffer for lines
-                        while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
-                            let line_bytes = buffer.drain(..pos + 1).collect::<Vec<u8>>();
-                            let line = String::from_utf8_lossy(&line_bytes);
-                            let line = line.trim();
-
-                            if line.is_empty() {
-                                continue;
-                            }
-
-                            if let Some(data) = line.strip_prefix("data: ") {
-                                if data == "[DONE]" {
-                                    break;
-                                }
-                                if data.starts_with("[ERROR]") {
-                                    tracing::error!("Backend error in stream: {}", data);
-                                    full_response.push_str(data);
-                                    store.dispatch(Action::UpdateMessageContent {
-                                        message_id: assistant_msg_id,
-                                        content: full_response.clone(),
-                                    });
-                                    break;
-                                }
-                                full_response.push_str(data);
-                                store.dispatch(Action::UpdateMessageContent {
-                                    message_id: assistant_msg_id,
-                                    content: full_response.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                store.dispatch(Action::SetGenerating(false));
+                process_completion_stream(
+                    store,
+                    CompletionRequest {
+                        chat_id,
+                        regenerate: false,
+                        message_id: None,
+                        api_key: settings.api_key,
+                        api_base: Some(settings.api_base),
+                        model: settings.model,
+                        temperature: Some(settings.temperature),
+                        max_tokens: Some(settings.max_tokens),
+                    },
+                    assistant_msg_id,
+                )
+                .await;
             });
         })
     };
@@ -631,5 +497,104 @@ pub fn chat_stage() -> Html {
                 </div>
             </div>
         </div>
+    }
+}
+
+/// Helper to process the completion stream and update the store
+async fn process_completion_stream(
+    store: StoreContext,
+    payload: CompletionRequest,
+    message_id: uuid::Uuid,
+) {
+    let req = match Request::post("/api/completion").json(&payload) {
+        Ok(req) => req,
+        Err(e) => {
+            tracing::error!("Failed to create request: {:?}", e);
+            if payload.regenerate {
+                store.dispatch(Action::SetRegenerating(None));
+            } else {
+                store.dispatch(Action::SetGenerating(false));
+            }
+            return;
+        }
+    };
+
+    let resp = match req.send().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            tracing::error!("Failed to send request: {:?}", e);
+            store.dispatch(Action::UpdateMessageContent {
+                message_id,
+                content: format!("[Error: {}]", e),
+            });
+            if payload.regenerate {
+                store.dispatch(Action::SetRegenerating(None));
+            } else {
+                store.dispatch(Action::SetGenerating(false));
+            }
+            return;
+        }
+    };
+
+    if let Some(body) = resp.body() {
+        let mut stream = wasm_streams::ReadableStream::from_raw(body).into_stream();
+        let mut full_response = String::new();
+        let mut buffer = Vec::new();
+
+        while let Some(result) = stream.next().await {
+            let chunk = match result {
+                Ok(chunk) => chunk,
+                Err(e) => {
+                    tracing::error!("Stream error: {:?}", e);
+                    break;
+                }
+            };
+
+            let bytes = js_sys::Uint8Array::new(&chunk).to_vec();
+            buffer.extend_from_slice(&bytes);
+
+            while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                let line_bytes = buffer.drain(..pos + 1).collect::<Vec<u8>>();
+                let line = String::from_utf8_lossy(&line_bytes);
+                let line = line.trim_end_matches(['\n', '\r']);
+
+                if line.is_empty() {
+                    continue;
+                }
+
+                if let Some(data) = line.strip_prefix("data: ") {
+                    if data == "[DONE]" {
+                        break;
+                    }
+                    if data.starts_with("[ERROR]") {
+                        tracing::error!("Backend error in stream: {}", data);
+                        full_response.push_str(data);
+                        store.dispatch(Action::UpdateMessageContent {
+                            message_id,
+                            content: full_response.clone(),
+                        });
+                        break;
+                    }
+                    full_response.push_str(data);
+                    store.dispatch(Action::UpdateMessageContent {
+                        message_id,
+                        content: full_response.clone(),
+                    });
+                }
+            }
+        }
+
+        if payload.regenerate && !full_response.is_empty() {
+            store.dispatch(Action::AppendAlternative {
+                message_id,
+                content: full_response,
+            });
+        }
+    }
+
+    if payload.regenerate {
+        store.dispatch(Action::SetRegenerating(None));
+    } else {
+        store.dispatch(Action::SetGenerating(false));
     }
 }

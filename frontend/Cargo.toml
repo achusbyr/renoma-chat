@@ -17,6 +17,7 @@ uuid = { version = "*", features = ["v4", "serde", "js"] }
 yew = { version = "*", features = ["csr"] }
 shared = { path = "../shared" }
 wasm-bindgen-futures = "*"
+pulldown-cmark = "*"
 gloo-storage = "*"
 wasm-streams = "*"
 gloo-net = "*"
