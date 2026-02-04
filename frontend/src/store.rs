@@ -42,18 +42,19 @@ pub enum ModalType {
 
 pub enum Action {
     SetCharacters(Vec<Character>),
-    SelectCharacter(Uuid),
     SetChat(Chat),
+    SetGenerating(bool),
+    SetRegenerating(Option<Uuid>),
+    SelectCharacter(Uuid),
+    DeleteCharacter(Uuid),
+    EditMessage { message_id: Uuid, content: String },
+    DeleteMessage(Uuid),
     AppendMessage(ChatMessage),
+    AppendAlternative { message_id: Uuid, content: String },
     UpdateMessageContent { message_id: Uuid, content: String },
     UpdateSettings(AppSettings),
     OpenModal(ModalType),
     CloseModal,
-    SetGenerating(bool),
-    EditMessage { message_id: Uuid, content: String },
-    DeleteMessage(Uuid),
-    SetRegenerating(Option<Uuid>),
-    AppendAlternative { message_id: Uuid, content: String },
     SwipeMessage { message_id: Uuid, direction: i32 }, // -1 = left, +1 = right
 }
 
@@ -72,6 +73,13 @@ impl Reducible for State {
                 // Chat loading is handled by a side effect in the component triggering this
                 // or a use_effect in the main layout
                 next.active_chat = None;
+            }
+            Action::DeleteCharacter(id) => {
+                next.characters.retain(|c| c.id != id);
+                if next.active_character_id == Some(id) {
+                    next.active_character_id = None;
+                    next.active_chat = None;
+                }
             }
             Action::SetChat(chat) => {
                 next.active_chat = Some(chat);

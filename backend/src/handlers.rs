@@ -35,6 +35,18 @@ pub async fn create_character(
     Json(char)
 }
 
+pub async fn delete_character(
+    State(state): State<AppState>,
+    Path(character_id): Path<Uuid>,
+) -> Result<Json<()>, StatusCode> {
+    if state.db.get_character(character_id).await.is_none() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    state.db.delete_character(character_id).await;
+    Ok(Json(()))
+}
+
 pub async fn list_chats(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,

@@ -16,6 +16,7 @@ pub struct LocalDatabase {
 pub trait Database: Send + Sync {
     async fn get_characters(&self) -> Vec<Character>;
     async fn create_character(&self, character: Character);
+    async fn delete_character(&self, character_id: Uuid);
     async fn get_character(&self, character_id: Uuid) -> Option<Character>;
     async fn get_chats(&self, character_id: Option<Uuid>) -> Vec<Chat>;
     async fn create_chat(&self, chat: Chat);
@@ -54,6 +55,13 @@ impl Database for RwLock<LocalDatabase> {
     async fn create_character(&self, character: Character) {
         let mut db = self.write().unwrap();
         db.characters.push(character);
+        db.save();
+    }
+
+    async fn delete_character(&self, character_id: Uuid) {
+        let mut db = self.write().unwrap();
+        db.characters.retain(|c| c.id != character_id);
+        db.chats.retain(|c| c.character_id != character_id);
         db.save();
     }
 

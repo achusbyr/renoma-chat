@@ -47,11 +47,25 @@ pub fn char_sidebar() -> Html {
         Callback::from(move |_| store.dispatch(Action::OpenModal(ModalType::Settings)))
     };
 
+    let on_delete = {
+        let store = store.clone();
+        Callback::from(move |id: uuid::Uuid| {
+            let store = store.clone();
+            yew::platform::spawn_local(async move {
+                if web_sys::window()
+                    .and_then(|w| w.confirm_with_message("Are you sure you want to delete this character? This will also delete all associated chats.").ok())
+                    == Some(true)
+                &&api::delete_character(id).await.is_ok() {
+                        store.dispatch(Action::DeleteCharacter(id));
+                    }
+            });
+        })
+    };
+
     html! {
         <div class="sidebar">
             <header>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <div class="logo-square"></div>
                     <h1 class="app-title">{"Renoma"}</h1>
                 </div>
                 <div class="toolbar" style="display: flex; gap: 4px;">
@@ -77,6 +91,7 @@ pub fn char_sidebar() -> Html {
                 { for store.characters.iter().map(|char| {
                     let id = char.id;
                     let on_click = on_select.clone();
+                    let on_delete_click = on_delete.clone();
                     let is_active = Some(id) == store.active_character_id;
 
                     html! {
@@ -86,6 +101,9 @@ pub fn char_sidebar() -> Html {
                                 <div class="char-name">{&char.name}</div>
                                 <div class="char-desc">{&char.description}</div>
                             </div>
+                            <button class="delete-btn" onclick={move |e: MouseEvent| { e.stop_propagation(); on_delete_click.emit(id); }} title="Delete character">
+                                <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>
+                            </button>
                         </div>
                     }
                 })}

@@ -25,10 +25,20 @@ fn build_conversation(
 
     // Add system prompt if character exists
     if let Some(char) = character {
-        let system_prompt = format!(
-            "You are {}, description: {}\nPersonality: {}\nScenario: {}\nExample messages: {}",
-            char.name, char.description, char.personality, char.scenario, char.example_messages
-        );
+        let mut system_prompt = String::new();
+        system_prompt.push_str(&format!("You are {}", char.name));
+        if !char.description.is_empty() {
+            system_prompt.push_str(&format!("\nDescription: {}", char.description));
+        }
+        if !char.personality.is_empty() {
+            system_prompt.push_str(&format!("\nPersonality: {}", char.personality));
+        }
+        if !char.scenario.is_empty() {
+            system_prompt.push_str(&format!("\nScenario: {}", char.scenario));
+        }
+        if !char.example_messages.is_empty() {
+            system_prompt.push_str(&format!("\nExample messages: {}", char.example_messages));
+        }
         conversation.push(ChatCompletionRequestMessage::System(
             ChatCompletionRequestSystemMessageArgs::default()
                 .content(system_prompt)

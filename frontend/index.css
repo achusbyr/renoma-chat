@@ -115,13 +115,6 @@ body {
     gap: 8px;
 }
 
-.logo-square {
-    width: 12px;
-    height: 12px;
-    background: var(--primary);
-    border-radius: 3px;
-}
-
 .section-label {
     padding: 20px 20px 8px 20px;
     font-size: 0.7rem;
@@ -685,6 +678,32 @@ textarea.chat-input {
 .icon-btn svg {
     width: 18px;
     height: 18px;
+    fill: currentColor;
+}
+
+.char-item .delete-btn {
+    opacity: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: var(--text-dim);
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+}
+
+.char-item:hover .delete-btn {
+    opacity: 1;
+}
+
+.char-item .delete-btn:hover {
+    background: #fef2f2;
+    color: var(--danger);
+}
+
+.char-item .delete-btn svg {
+    width: 16px;
+    height: 16px;
     fill: currentColor;
 }
 

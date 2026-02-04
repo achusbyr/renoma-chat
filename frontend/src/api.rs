@@ -21,6 +21,13 @@ pub async fn create_character(char: CreateCharacterRequest) -> Result<Character,
         .await
 }
 
+pub async fn delete_character(id: Uuid) -> Result<(), gloo_net::Error> {
+    Request::delete(&format!("{}/characters/{}", API_BASE, id))
+        .send()
+        .await?;
+    Ok(())
+}
+
 pub async fn fetch_chats(char_id: Uuid) -> Result<Vec<Chat>, gloo_net::Error> {
     Request::get(&format!("{}/chats?character_id={}", API_BASE, char_id))
         .send()
