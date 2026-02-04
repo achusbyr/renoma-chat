@@ -16,7 +16,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([0, 0, 0, 0], cli.port));
     tracing::info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    unsafe { std::env::set_var("LOCAL_DB_PATH", cli.local_db_path.unwrap_or("db.json".into())) };
+    unsafe {
+        std::env::set_var(
+            "LOCAL_DB_PATH",
+            cli.local_db_path.unwrap_or("db.json".into()),
+        )
+    };
     let router = backend::init(router);
     axum::serve(listener, router).await?;
     Ok(())

@@ -42,7 +42,7 @@ fn render_events<'a>(events: &mut impl Iterator<Item = Event<'a>>) -> Html {
                 nodes.push(html! { <code>{code.as_ref()}</code> });
             }
             Event::SoftBreak => {
-                nodes.push(html! { " " });
+                nodes.push(html! { <br/> });
             }
             Event::HardBreak => {
                 nodes.push(html! { <br/> });
