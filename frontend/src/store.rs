@@ -1,6 +1,7 @@
 use gloo_storage::{LocalStorage, Storage};
 use shared::models::*;
 use std::rc::Rc;
+use uuid::Uuid;
 use yew::prelude::*;
 
 const STORAGE_KEY: &str = "renoma.settings";
@@ -8,11 +9,13 @@ const STORAGE_KEY: &str = "renoma.settings";
 #[derive(Clone, Debug, PartialEq)]
 pub struct State {
     pub characters: Vec<Character>,
-    pub active_character_id: Option<uuid::Uuid>,
+    pub active_character_id: Option<Uuid>,
     pub active_chat: Option<Chat>,
     pub settings: AppSettings,
     pub modal_open: Option<ModalType>,
     pub is_generating: bool,
+    pub editing_message_id: Option<Uuid>,
+    pub regenerating_message_id: Option<Uuid>,
 }
 
 impl Default for State {
@@ -25,6 +28,8 @@ impl Default for State {
             settings,
             modal_open: None,
             is_generating: false,
+            editing_message_id: None,
+            regenerating_message_id: None,
         }
     }
 }
@@ -37,14 +42,19 @@ pub enum ModalType {
 
 pub enum Action {
     SetCharacters(Vec<Character>),
-    SelectCharacter(uuid::Uuid),
+    SelectCharacter(Uuid),
     SetChat(Chat),
     AppendMessage(ChatMessage),
-    UpdateLastMessage(String), // For streaming
+    UpdateMessageContent { message_id: Uuid, content: String },
     UpdateSettings(AppSettings),
     OpenModal(ModalType),
     CloseModal,
     SetGenerating(bool),
+    EditMessage { message_id: Uuid, content: String },
+    DeleteMessage(Uuid),
+    SetRegenerating(Option<Uuid>),
+    AppendAlternative { message_id: Uuid, content: String },
+    SwipeMessage { message_id: Uuid, direction: i32 }, // -1 = left, +1 = right
 }
 
 impl Reducible for State {
@@ -71,11 +81,14 @@ impl Reducible for State {
                     chat.messages.push(msg);
                 }
             }
-            Action::UpdateLastMessage(content) => {
+            Action::UpdateMessageContent {
+                message_id,
+                content,
+            } => {
                 if let Some(chat) = &mut next.active_chat
-                    && let Some(last) = chat.messages.last_mut()
+                    && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
                 {
-                    last.content = content;
+                    msg.content = content;
                 }
             }
             Action::UpdateSettings(settings) => {
@@ -90,6 +103,77 @@ impl Reducible for State {
             }
             Action::SetGenerating(is_gen) => {
                 next.is_generating = is_gen;
+            }
+            Action::EditMessage {
+                message_id,
+                content,
+            } => {
+                if let Some(chat) = &mut next.active_chat
+                    && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
+                {
+                    // If we're editing an alternative, update the appropriate one
+                    if msg.active_index == 0 {
+                        msg.content = content;
+                    } else if let Some(alt) = msg.alternatives.get_mut(msg.active_index - 1) {
+                        *alt = content;
+                    }
+                }
+                next.editing_message_id = None;
+            }
+            Action::DeleteMessage(message_id) => {
+                if let Some(chat) = &mut next.active_chat {
+                    chat.messages.retain(|m| m.id != message_id);
+                }
+            }
+            Action::SetRegenerating(message_id) => {
+                next.regenerating_message_id = message_id;
+                if let Some(id) = message_id
+                    && let Some(chat) = &mut next.active_chat
+                    && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == id)
+                    && msg.alternatives.is_empty()
+                {
+                    // Move current content to alternatives before it gets overwritten by stream
+                    let original = msg.content.clone();
+                    msg.alternatives.push(original);
+                    msg.content = "".to_string();
+                }
+            }
+            Action::AppendAlternative {
+                message_id,
+                content,
+            } => {
+                if let Some(chat) = &mut next.active_chat
+                    && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
+                {
+                    // If we already moved the original to alternatives in SetRegenerating,
+                    // msg.alternatives will not be empty.
+                    // We just need to ensure the final content is set, and we're on the right index.
+
+                    // Add the new content as another alternative
+                    msg.alternatives.push(content.clone());
+                    // Switch to show the new alternative
+                    msg.active_index = msg.alternatives.len();
+                    msg.content = content;
+                }
+            }
+            Action::SwipeMessage {
+                message_id,
+                direction,
+            } => {
+                if let Some(chat) = &mut next.active_chat
+                    && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
+                {
+                    let total = msg.variant_count();
+                    let new_index = if direction < 0 {
+                        msg.active_index.saturating_sub(1)
+                    } else {
+                        (msg.active_index + 1).min(total - 1)
+                    };
+
+                    if new_index != msg.active_index {
+                        msg.active_index = new_index;
+                    }
+                }
             }
         }
 

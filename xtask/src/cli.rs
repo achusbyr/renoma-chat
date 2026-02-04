@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(about = "Renoma utilies - trunk must be installed")]
+#[command(about = "Renoma utilities - trunk must be installed and available in PATH")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,

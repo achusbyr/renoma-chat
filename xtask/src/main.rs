@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         cli::Command::Launch => {
             let mut cmd = std::process::Command::new("trunk");
-            cmd.current_dir(std::fs::canonicalize("frontend")?);
+            cmd.current_dir("frontend");
             cmd.arg("build");
             cmd.spawn()?.wait()?;
 
@@ -35,17 +35,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cmd.spawn()?.wait()?;
 
             let mut cmd = std::process::Command::new("trunk");
-            cmd.current_dir(std::fs::canonicalize("frontend")?);
+            cmd.current_dir("frontend");
             cmd.arg("build").arg("--release");
             cmd.spawn()?.wait()?;
 
             std::fs::create_dir_all("Renoma/dist")?;
             std::fs::copy("target/release/renoma-launcher", "Renoma/renoma-launcher")?;
-            for file in std::fs::read_dir("frontend/dist")? {
-                let file = file?;
+            for entry in std::fs::read_dir("frontend/dist")? {
+                let entry = entry?;
+                let file_name = entry.file_name();
                 std::fs::copy(
-                    file.path(),
-                    format!("Renoma/dist/{}", file.file_name().to_str().unwrap()),
+                    entry.path(),
+                    format!(
+                        "Renoma/dist/{}",
+                        file_name.to_str().ok_or("Invalid file name")?
+                    ),
                 )?;
             }
 

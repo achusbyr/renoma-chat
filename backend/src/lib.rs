@@ -3,11 +3,14 @@ mod handlers;
 mod openai;
 
 use crate::dbs::local::{AppState, LocalDatabase};
-use crate::handlers::{append_message, create_character, create_chat, list_characters, list_chats};
-use crate::openai::generate_response;
+use crate::handlers::{
+    append_message, create_character, create_chat, delete_message, edit_message, list_characters,
+    list_chats, swipe_message,
+};
+use crate::openai::{generate_response, regenerate_response};
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use std::sync::{Arc, RwLock};
 use tower_http::cors::CorsLayer;
@@ -28,7 +31,16 @@ pub fn init(router: Router<AppState>) -> Router<()> {
         )
         .route("/api/chats", get(list_chats).post(create_chat))
         .route("/api/chats/{chat_id}/message", post(append_message))
+        .route(
+            "/api/chats/{chat_id}/messages/{message_id}",
+            put(edit_message).delete(delete_message),
+        )
+        .route(
+            "/api/chats/{chat_id}/messages/{message_id}/swipe",
+            post(swipe_message),
+        )
         .route("/api/generate", post(generate_response))
+        .route("/api/regenerate", post(regenerate_response))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

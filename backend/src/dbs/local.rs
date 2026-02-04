@@ -16,12 +16,16 @@ pub struct LocalDatabase {
 pub trait Database: Send + Sync {
     async fn get_characters(&self) -> Vec<Character>;
     async fn create_character(&self, character: Character);
+    async fn get_character(&self, character_id: Uuid) -> Option<Character>;
     async fn get_chats(&self, character_id: Option<Uuid>) -> Vec<Chat>;
     async fn create_chat(&self, chat: Chat);
     async fn get_chat(&self, chat_id: Uuid) -> Option<Chat>;
     async fn append_message(&self, chat_id: Uuid, message: ChatMessage);
-    // Needed for handlers that might need to check character details from a chat
-    async fn get_character(&self, character_id: Uuid) -> Option<Character>;
+    async fn update_message(&self, chat_id: Uuid, message_id: Uuid, content: String);
+    async fn delete_message(&self, chat_id: Uuid, message_id: Uuid);
+    async fn append_alternative(&self, chat_id: Uuid, message_id: Uuid, content: String);
+    async fn set_active_alternative(&self, chat_id: Uuid, message_id: Uuid, index: usize);
+    async fn get_message(&self, chat_id: Uuid, message_id: Uuid) -> Option<ChatMessage>;
 }
 
 impl LocalDatabase {
@@ -51,6 +55,11 @@ impl Database for RwLock<LocalDatabase> {
         let mut db = self.write().unwrap();
         db.characters.push(character);
         db.save();
+    }
+
+    async fn get_character(&self, character_id: Uuid) -> Option<Character> {
+        let db = self.read().unwrap();
+        db.characters.iter().find(|c| c.id == character_id).cloned()
     }
 
     async fn get_chats(&self, character_id: Option<Uuid>) -> Vec<Chat> {
@@ -85,9 +94,57 @@ impl Database for RwLock<LocalDatabase> {
         }
     }
 
-    async fn get_character(&self, character_id: Uuid) -> Option<Character> {
+    async fn update_message(&self, chat_id: Uuid, message_id: Uuid, content: String) {
+        let mut db = self.write().unwrap();
+        if let Some(chat) = db.chats.iter_mut().find(|c| c.id == chat_id)
+            && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
+        {
+            // Update the active content (primary or alternative)
+            if msg.active_index == 0 {
+                msg.content = content;
+            } else if let Some(alt) = msg.alternatives.get_mut(msg.active_index - 1) {
+                *alt = content;
+            }
+            db.save();
+        }
+    }
+
+    async fn delete_message(&self, chat_id: Uuid, message_id: Uuid) {
+        let mut db = self.write().unwrap();
+        if let Some(chat) = db.chats.iter_mut().find(|c| c.id == chat_id) {
+            chat.messages.retain(|m| m.id != message_id);
+            db.save();
+        }
+    }
+
+    async fn append_alternative(&self, chat_id: Uuid, message_id: Uuid, content: String) {
+        let mut db = self.write().unwrap();
+        if let Some(chat) = db.chats.iter_mut().find(|c| c.id == chat_id)
+            && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
+        {
+            msg.alternatives.push(content);
+            msg.active_index = msg.alternatives.len();
+            db.save();
+        }
+    }
+
+    async fn set_active_alternative(&self, chat_id: Uuid, message_id: Uuid, index: usize) {
+        let mut db = self.write().unwrap();
+        if let Some(chat) = db.chats.iter_mut().find(|c| c.id == chat_id)
+            && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
+            && index < msg.variant_count()
+        {
+            msg.active_index = index;
+            db.save();
+        }
+    }
+
+    async fn get_message(&self, chat_id: Uuid, message_id: Uuid) -> Option<ChatMessage> {
         let db = self.read().unwrap();
-        db.characters.iter().find(|c| c.id == character_id).cloned()
+        db.chats
+            .iter()
+            .find(|c| c.id == chat_id)
+            .and_then(|chat| chat.messages.iter().find(|m| m.id == message_id).cloned())
     }
 }
 

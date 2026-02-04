@@ -23,11 +23,11 @@ fn app() -> Html {
                     <ChatStage />
                 </div>
 
-                if store.modal_open.is_some() {
-                    if store.modal_open == Some(ModalType::Settings) {
-                        <SettingsModal />
-                    } else {
-                        <CharModal />
+                {
+                    match store.modal_open {
+                        Some(ModalType::Settings) => html! { <SettingsModal /> },
+                        Some(ModalType::CreateCharacter) => html! { <CharModal /> },
+                        None => html! {},
                     }
                 }
             </div>
