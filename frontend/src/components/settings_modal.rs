@@ -119,7 +119,7 @@ pub fn settings_modal() -> Html {
                         <input type="text" class="form-input"
                             value={local_state.model.clone()}
                             oninput={on_model_input}
-                            placeholder="tngtech/tng-r1t-chimera:free"
+                            placeholder="tngtech/deepseek-r1t2-chimera:free"
                         />
                     </div>
 

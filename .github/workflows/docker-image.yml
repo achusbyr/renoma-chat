@@ -2,18 +2,35 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v6.0.2
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag renoma-chat:latest
+      - uses: actions/checkout@v6.0.2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}

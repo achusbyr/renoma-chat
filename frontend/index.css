@@ -12,7 +12,8 @@
     --radius-md: 10px;
     --radius-lg: 14px;
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-md:
+        0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -53,7 +54,11 @@
 
 body {
     margin: 0;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family:
+        "Inter",
+        system-ui,
+        -apple-system,
+        sans-serif;
     color: var(--text-main);
     background-color: var(--bg-main);
     height: 100vh;
@@ -293,17 +298,28 @@ body {
     margin-bottom: 0;
 }
 
-.message-text h1, .message-text h2, .message-text h3 {
+.message-text h1,
+.message-text h2,
+.message-text h3 {
     margin: 16px 0 8px 0;
     font-weight: 700;
     line-height: 1.2;
 }
 
-.message-text h1 { font-size: 1.4rem; }
-.message-text h2 { font-size: 1.2rem; }
-.message-text h3 { font-size: 1.1rem; }
+.message-text h1 {
+    font-size: 1.4rem;
+}
 
-.message-text ul, .message-text ol {
+.message-text h2 {
+    font-size: 1.2rem;
+}
+
+.message-text h3 {
+    font-size: 1.1rem;
+}
+
+.message-text ul,
+.message-text ol {
     margin: 8px 0 16px 24px;
     padding: 0;
 }
@@ -316,7 +332,7 @@ body {
     background: rgba(0, 0, 0, 0.05);
     padding: 2px 4px;
     border-radius: 4px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
     font-size: 0.9em;
 }
 
@@ -362,7 +378,8 @@ body {
     font-size: 0.9rem;
 }
 
-.message-text th, .message-text td {
+.message-text th,
+.message-text td {
     border: 1px solid var(--border);
     padding: 8px 12px;
     text-align: left;

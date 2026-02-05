@@ -149,7 +149,7 @@ impl Default for AppSettings {
         Self {
             api_key: "".to_string(),
             api_base: "https://openrouter.ai/api/v1".to_string(),
-            model: "tngtech/tng-r1t-chimera:free".to_string(),
+            model: "tngtech/deepseek-r1t2-chimera:free".to_string(),
             temperature: 0.7,
             max_tokens: 4096,
         }
