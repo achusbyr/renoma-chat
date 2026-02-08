@@ -65,10 +65,10 @@ pub fn char_sidebar() -> Html {
     html! {
         <div class="sidebar">
             <header>
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="sidebar-header-content">
                     <h1 class="app-title">{"Renoma"}</h1>
                 </div>
-                <div class="toolbar" style="display: flex; gap: 4px;">
+                <div class="sidebar-toolbar">
                     <button class="icon-btn" onclick={open_create} title="Create Character">
                         <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path></svg>
                     </button>
@@ -84,7 +84,7 @@ pub fn char_sidebar() -> Html {
 
             <div class="char-list">
                 if store.characters.is_empty() {
-                    <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+                    <div class="sidebar-empty-state">
                         {"No characters found."}
                     </div>
                 }

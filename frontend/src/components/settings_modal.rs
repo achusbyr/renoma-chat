@@ -123,7 +123,7 @@ pub fn settings_modal() -> Html {
                         />
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-grid-2">
                          <div class="form-group">
                             <label class="form-label">{"Temperature"}</label>
                             <input type="number" class="form-input"

@@ -213,13 +213,48 @@ body {
 /* Chat Header */
 .chat-header {
     height: 64px;
-    padding: 0 24px;
+    padding: 16px 24px;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
-    background: var(--bg-main);
-    backdrop-filter: blur(10px);
-    background: rgba(var(--bg-main), 0.8);
+    background: var(--bg-sec);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.chat-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-main);
+}
+
+.chat-placeholder-icon {
+    font-size: 3rem;
+}
+
+.sidebar-header-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-toolbar {
+    display: flex;
+    gap: 4px;
+}
+
+.sidebar-empty-state {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.form-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
 }
 
 /* Chat Stage */

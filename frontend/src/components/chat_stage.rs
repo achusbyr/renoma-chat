@@ -449,15 +449,15 @@ pub fn chat_stage() -> Html {
         <div class="main-stage">
             // Header
             if let Some(_) = store.active_chat {
-                 <div class="chat-header" style="position: sticky; top: 0; background: var(--bg-sec); padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; z-index: 10;">
-                    <div style="font-weight: 600; font-size: 1rem; color: var(--text-main);">{&char_name}</div>
+                <div class="chat-header">
+                    <div class="chat-title">{&char_name}</div>
                 </div>
             }
 
             <div class={classes!("chat-message-list")} ref={container_ref}>
                 if store.active_chat.is_none() {
                     <div class="chat-placeholder">
-                        <div style="font-size: 3rem;">{"✨"}</div>
+                        <div class="chat-placeholder-icon">{"✨"}</div>
                         <div>{"Select a character to start chatting"}</div>
                     </div>
                 } else {
