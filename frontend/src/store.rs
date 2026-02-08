@@ -47,15 +47,29 @@ pub enum Action {
     SetRegenerating(Option<Uuid>),
     SelectCharacter(Uuid),
     DeleteCharacter(Uuid),
-    EditMessage { message_id: Uuid, content: String },
     DeleteMessage(Uuid),
+    EditMessage {
+        message_id: Uuid,
+        content: String,
+    },
     AppendMessage(ChatMessage),
-    AppendAlternative { message_id: Uuid, content: String },
-    UpdateMessageContent { message_id: Uuid, content: String },
+    AppendAlternative {
+        message_id: Uuid,
+        content: String,
+    },
+    UpdateMessageContent {
+        message_id: Uuid,
+        content: String,
+    },
     UpdateSettings(AppSettings),
     OpenModal(ModalType),
     CloseModal,
-    SwipeMessage { message_id: Uuid, direction: i32 }, // -1 = left, +1 = right
+    CloseChat,
+    /// -1 = left, +1 = right
+    SwipeMessage {
+        message_id: Uuid,
+        direction: i32,
+    },
 }
 
 impl Reducible for State {
@@ -182,6 +196,10 @@ impl Reducible for State {
                         msg.active_index = new_index;
                     }
                 }
+            }
+            Action::CloseChat => {
+                next.active_chat = None;
+                next.active_character_id = None;
             }
         }
 

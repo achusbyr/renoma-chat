@@ -872,3 +872,39 @@ textarea.chat-input {
         transform: scale(1);
     }
 }
+
+/* Mobile Responsive */
+.back-btn {
+    display: none;
+    margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+    .back-btn {
+        display: flex;
+    }
+
+    .app-container {
+        flex-direction: column;
+    }
+
+    .sidebar-container {
+        width: 100%;
+        min-width: 0;
+        border-right: none;
+    }
+
+    .main-stage {
+        width: 100%;
+        display: none;
+    }
+
+    /* When chat is active */
+    .app-container.chat-active .sidebar-container {
+        display: none;
+    }
+
+    .app-container.chat-active .main-stage {
+        display: flex;
+    }
+}

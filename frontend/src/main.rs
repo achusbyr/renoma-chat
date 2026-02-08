@@ -13,9 +13,14 @@ use yew::prelude::*;
 fn app() -> Html {
     let store = use_reducer(State::default);
 
+    let app_class = classes!(
+        "app-container",
+        store.active_chat.as_ref().map(|_| "chat-active")
+    );
+
     html! {
         <ContextProvider<StoreContext> context={store.clone()}>
-            <div class="app-container">
+            <div class={app_class}>
                 <div class="sidebar-container">
                     <CharSidebar />
                 </div>
