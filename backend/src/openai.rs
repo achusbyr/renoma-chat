@@ -1,4 +1,4 @@
-use crate::dbs::local::AppState;
+use crate::AppState;
 use async_openai::{
     Client,
     config::OpenAIConfig,
@@ -99,8 +99,15 @@ pub async fn generate_response(
     // Fetch conversation history and character prompt
     let chat = state.db.get_chat(payload.chat_id).await;
 
-    if chat.is_none() {
-        return (axum::http::StatusCode::NOT_FOUND, "Chat not found").into_response();
+    if chat.is_err() {
+        if matches!(chat, Err(crate::dbs::DbError::NotFound(_))) {
+            return (axum::http::StatusCode::NOT_FOUND, "Chat not found").into_response();
+        }
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error",
+        )
+            .into_response();
     }
     let chat = chat.unwrap();
 
@@ -123,7 +130,7 @@ pub async fn generate_response(
         None
     };
 
-    let character = state.db.get_character(chat.character_id).await;
+    let character = state.db.get_character(chat.character_id).await.ok();
     let conversation = build_conversation(&chat.messages, character.as_ref(), truncate_at);
 
     let request = CreateChatCompletionRequestArgs::default()
@@ -158,10 +165,14 @@ pub async fn generate_response(
 
                 // Persist the full response to the database
                 if !full_response.is_empty() {
-                    if payload.regenerate && let Some(msg_id) = payload.message_id {
-                        state.db.append_alternative(payload.chat_id, msg_id, full_response).await;
+                    let res = if payload.regenerate && let Some(msg_id) = payload.message_id {
+                        state.db.append_alternative(payload.chat_id, msg_id, full_response).await
                     } else {
-                        state.db.append_message(payload.chat_id, shared::models::ChatMessage::new("assistant", full_response)).await;
+                        state.db.append_message(payload.chat_id, shared::models::ChatMessage::new("assistant", full_response)).await
+                    };
+
+                    if let Err(e) = res {
+                         yield Ok(format!("data: [ERROR] Failed to save response: {}\n\n", e));
                     }
                 }
 

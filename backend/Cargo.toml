@@ -4,13 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+sqlx = { version = "*", features = [
+    "runtime-tokio-rustls",
+    "sqlite",
+    "postgres",
+    "uuid",
+    "json",
+] }
 tower-http = { version = "*", features = ["fs", "trace", "cors"] }
 async-openai = { version = "*", features = ["chat-completion"] }
 uuid = { version = "*", features = ["v4", "serde"] }
-serde = { version = "*", features = ["derive"] }
 shared = { path = "../shared" }
 async-stream = "*"
 async-trait = "*"
 serde_json = "*"
+thiserror = "*"
 futures = "*"
 axum = "*"

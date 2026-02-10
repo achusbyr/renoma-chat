@@ -7,6 +7,8 @@ pub struct Cli {
     pub port: u16,
     #[arg(long, default_value = "dist")]
     pub dist_dir: PathBuf,
+    #[arg(long, default_value = "renoma.db")]
+    pub local_db_path: PathBuf,
     #[arg(long)]
-    pub local_db_path: Option<PathBuf>,
+    pub postgres_url: Option<String>,
 }

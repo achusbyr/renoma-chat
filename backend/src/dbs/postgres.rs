@@ -2,17 +2,17 @@ use crate::dbs::{Database, DbError, DbResult};
 use async_trait::async_trait;
 use serde_json::Value;
 use shared::models::{Character, Chat, ChatMessage, ChatParticipant};
-use sqlx::{Pool, Row, Sqlite, sqlite::SqlitePoolOptions};
+use sqlx::{Pool, Postgres, Row, postgres::PgPoolOptions};
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub struct LocalDatabase {
-    pool: Pool<Sqlite>,
+pub struct PostgresDatabase {
+    pool: Pool<Postgres>,
 }
 
-impl LocalDatabase {
+impl PostgresDatabase {
     pub async fn new(database_url: &str) -> Self {
-        let pool = SqlitePoolOptions::new()
+        let pool = PgPoolOptions::new()
             .connect(database_url)
             .await
             .expect("Failed to connect to database");
@@ -23,9 +23,10 @@ impl LocalDatabase {
     }
 
     async fn init(&self) {
+        // Create tables compatible with PostgreSQL/CockroachDB
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS characters (
-                id TEXT PRIMARY KEY,
+                id UUID PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT NOT NULL,
                 personality TEXT NOT NULL,
@@ -40,9 +41,9 @@ impl LocalDatabase {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS chats (
-                id TEXT PRIMARY KEY,
-                character_id TEXT NOT NULL,
-                participants JSON NOT NULL,
+                id UUID PRIMARY KEY,
+                character_id UUID NOT NULL,
+                participants JSONB NOT NULL,
                 FOREIGN KEY(character_id) REFERENCES characters(id)
             )",
         )
@@ -50,14 +51,15 @@ impl LocalDatabase {
         .await
         .expect("Failed to create chats table");
 
+        // Note: active_index is INTEGER. alternatives is JSONB.
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                chat_id TEXT NOT NULL,
+                id UUID PRIMARY KEY,
+                chat_id UUID NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
-                sender_id TEXT,
-                alternatives JSON NOT NULL,
+                sender_id UUID,
+                alternatives JSONB NOT NULL,
                 active_index INTEGER NOT NULL,
                 FOREIGN KEY(chat_id) REFERENCES chats(id)
             )",
@@ -66,10 +68,77 @@ impl LocalDatabase {
         .await
         .expect("Failed to create messages table");
     }
+
+    async fn get_messages_for_chat(&self, chat_id: Uuid) -> DbResult<Vec<ChatMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id = $1 ORDER BY id", // Assuming insertion order or ID sort. CockroachDB UUIDs aren't sequential by default, so we might need a timestamp. But local.rs doesn't sort explicitly either.
+        )
+        .bind(chat_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let alts_val: Value = row.get("alternatives");
+                let alternatives: Vec<String> =
+                    serde_json::from_value(alts_val).unwrap_or_default();
+
+                ChatMessage {
+                    id: row.get("id"),
+                    role: row.get("role"),
+                    content: row.get("content"),
+                    sender_id: row.get("sender_id"),
+                    alternatives,
+                    active_index: row.get::<i32, _>("active_index") as usize,
+                }
+            })
+            .collect())
+    }
+
+    async fn get_message_by_id(&self, message_id: Uuid) -> DbResult<Option<ChatMessage>> {
+        let row = sqlx::query(
+            "SELECT id, role, content, sender_id, alternatives, active_index FROM messages WHERE id = $1",
+        )
+        .bind(message_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let row = match row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let alts_val: Value = row.get("alternatives");
+        let alternatives: Vec<String> = serde_json::from_value(alts_val).unwrap_or_default();
+
+        Ok(Some(ChatMessage {
+            id: row.get("id"),
+            role: row.get("role"),
+            content: row.get("content"),
+            sender_id: row.get("sender_id"),
+            alternatives,
+            active_index: row.get::<i32, _>("active_index") as usize,
+        }))
+    }
+
+    async fn save_message(&self, message_id: Uuid, msg: ChatMessage) -> DbResult<()> {
+        let alts_json = serde_json::to_value(&msg.alternatives)?;
+        sqlx::query(
+            "UPDATE messages SET content = $1, alternatives = $2, active_index = $3 WHERE id = $4",
+        )
+        .bind(msg.content)
+        .bind(alts_json)
+        .bind(msg.active_index as i32)
+        .bind(message_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
-impl Database for LocalDatabase {
+impl Database for PostgresDatabase {
     async fn get_characters(&self) -> DbResult<Vec<Character>> {
         let rows = sqlx::query(
             "SELECT id, name, description, personality, scenario, first_message, example_messages FROM characters"
@@ -80,7 +149,7 @@ impl Database for LocalDatabase {
         Ok(rows
             .into_iter()
             .map(|row| Character {
-                id: Uuid::parse_str(row.get("id")).unwrap_or_default(),
+                id: row.get("id"),
                 name: row.get("name"),
                 description: row.get("description"),
                 personality: row.get("personality"),
@@ -93,9 +162,9 @@ impl Database for LocalDatabase {
 
     async fn create_character(&self, character: Character) -> DbResult<()> {
         sqlx::query(
-            "INSERT INTO characters (id, name, description, personality, scenario, first_message, example_messages) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO characters (id, name, description, personality, scenario, first_message, example_messages) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-        .bind(character.id.to_string())
+        .bind(character.id)
         .bind(character.name)
         .bind(character.description)
         .bind(character.personality)
@@ -108,24 +177,25 @@ impl Database for LocalDatabase {
     }
 
     async fn delete_character(&self, character_id: Uuid) -> DbResult<()> {
-        // Cascading delete would be nice, but for now manual
+        let text_id = character_id; // Postgres driver handles UUIDs natively
+
         // First get all chats
         let chats = self.get_chats(Some(character_id)).await?;
         for chat in chats {
             // Delete messages for chat
-            sqlx::query("DELETE FROM messages WHERE chat_id = ?")
-                .bind(chat.id.to_string())
+            sqlx::query("DELETE FROM messages WHERE chat_id = $1")
+                .bind(chat.id)
                 .execute(&self.pool)
                 .await?;
             // Delete chat
-            sqlx::query("DELETE FROM chats WHERE id = ?")
-                .bind(chat.id.to_string())
+            sqlx::query("DELETE FROM chats WHERE id = $1")
+                .bind(chat.id)
                 .execute(&self.pool)
                 .await?;
         }
 
-        sqlx::query("DELETE FROM characters WHERE id = ?")
-            .bind(character_id.to_string())
+        sqlx::query("DELETE FROM characters WHERE id = $1")
+            .bind(text_id)
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -133,15 +203,15 @@ impl Database for LocalDatabase {
 
     async fn get_character(&self, character_id: Uuid) -> DbResult<Character> {
         let row = sqlx::query(
-            "SELECT id, name, description, personality, scenario, first_message, example_messages FROM characters WHERE id = ?",
+            "SELECT id, name, description, personality, scenario, first_message, example_messages FROM characters WHERE id = $1",
         )
-        .bind(character_id.to_string())
+        .bind(character_id)
         .fetch_optional(&self.pool)
         .await?;
 
         match row {
             Some(row) => Ok(Character {
-                id: Uuid::parse_str(row.get("id")).unwrap_or_default(),
+                id: row.get("id"),
                 name: row.get("name"),
                 description: row.get("description"),
                 personality: row.get("personality"),
@@ -158,8 +228,8 @@ impl Database for LocalDatabase {
 
     async fn get_chats(&self, character_id: Option<Uuid>) -> DbResult<Vec<Chat>> {
         let rows = if let Some(cid) = character_id {
-            sqlx::query("SELECT id, character_id, participants FROM chats WHERE character_id = ?")
-                .bind(cid.to_string())
+            sqlx::query("SELECT id, character_id, participants FROM chats WHERE character_id = $1")
+                .bind(cid)
                 .fetch_all(&self.pool)
                 .await?
         } else {
@@ -169,20 +239,18 @@ impl Database for LocalDatabase {
         };
 
         // Collect chat IDs to fetch messages in batch
-        let chat_ids: Vec<String> = rows.iter().map(|r| r.get::<String, _>("id")).collect();
+        let chat_ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
 
         // Fetch all messages for these chats in one query if there are any chats
-        let mut messages_map: std::collections::HashMap<String, Vec<ChatMessage>> =
+        let mut messages_map: std::collections::HashMap<Uuid, Vec<ChatMessage>> =
             std::collections::HashMap::new();
 
         if !chat_ids.is_empty() {
-            // Basic workaround for "IN" clause with vector param (not directly supported easily in all sqlx versions without macro magic or query building)
-            // For simplicity/safety with current dependencies, we can just loop if this list is small, OR construct a dynamic query.
-            // But to solve N+1, constructing a dynamic query or fetching ALL messages (if local DB isn't huge) is better.
-            // Given it's a local app, fetching all messages for relevant chats is plausible.
-
-            // Let's use a dynamic query builder approach for "IN (?)"
-            let placeholders: Vec<String> = chat_ids.iter().map(|_| "?".to_string()).collect();
+            let placeholders: Vec<String> = chat_ids
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("${}", i + 1))
+                .collect();
             let query = format!(
                 "SELECT id, chat_id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id IN ({})",
                 placeholders.join(",")
@@ -196,23 +264,21 @@ impl Database for LocalDatabase {
             let msg_rows = query_builder.fetch_all(&self.pool).await?;
 
             for row in msg_rows {
-                let chat_id_str: String = row.get("chat_id");
+                let chat_id: Uuid = row.get("chat_id");
                 let alts_val: Value = row.get("alternatives");
                 let alternatives: Vec<String> =
                     serde_json::from_value(alts_val).unwrap_or_default();
-                let id_str: String = row.get("id");
-                let sender_id_str: Option<String> = row.get("sender_id");
 
                 let msg = ChatMessage {
-                    id: Uuid::parse_str(&id_str).unwrap_or_default(),
+                    id: row.get("id"),
                     role: row.get("role"),
                     content: row.get("content"),
-                    sender_id: sender_id_str.and_then(|s| Uuid::parse_str(&s).ok()),
+                    sender_id: row.get("sender_id"),
                     alternatives,
-                    active_index: row.get::<i64, _>("active_index") as usize,
+                    active_index: row.get::<i32, _>("active_index") as usize,
                 };
 
-                messages_map.entry(chat_id_str).or_default().push(msg);
+                messages_map.entry(chat_id).or_default().push(msg);
             }
         }
 
@@ -221,15 +287,13 @@ impl Database for LocalDatabase {
             let participants_val: Value = row.get("participants");
             let participants: Vec<ChatParticipant> =
                 serde_json::from_value(participants_val).map_err(DbError::Serde)?;
-            let chat_id_str: String = row.get("id");
-            let chat_id = Uuid::parse_str(&chat_id_str).unwrap_or_default();
+            let chat_id: Uuid = row.get("id");
 
-            let messages = messages_map.remove(&chat_id_str).unwrap_or_default();
+            let messages = messages_map.remove(&chat_id).unwrap_or_default(); // Needs Uuid key
 
-            let char_id_str: String = row.get("character_id");
             chats.push(Chat {
                 id: chat_id,
-                character_id: Uuid::parse_str(&char_id_str).unwrap_or_default(),
+                character_id: row.get("character_id"),
                 messages,
                 participants,
             });
@@ -239,9 +303,9 @@ impl Database for LocalDatabase {
 
     async fn create_chat(&self, chat: Chat) -> DbResult<()> {
         let participants_json = serde_json::to_value(&chat.participants)?;
-        sqlx::query("INSERT INTO chats (id, character_id, participants) VALUES (?, ?, ?)")
-            .bind(chat.id.to_string())
-            .bind(chat.character_id.to_string())
+        sqlx::query("INSERT INTO chats (id, character_id, participants) VALUES ($1, $2, $3)")
+            .bind(chat.id)
+            .bind(chat.character_id)
             .bind(participants_json)
             .execute(&self.pool)
             .await?;
@@ -254,8 +318,8 @@ impl Database for LocalDatabase {
     }
 
     async fn get_chat(&self, chat_id: Uuid) -> DbResult<Chat> {
-        let row = sqlx::query("SELECT id, character_id, participants FROM chats WHERE id = ?")
-            .bind(chat_id.to_string())
+        let row = sqlx::query("SELECT id, character_id, participants FROM chats WHERE id = $1")
+            .bind(chat_id)
             .fetch_optional(&self.pool)
             .await?;
 
@@ -266,11 +330,9 @@ impl Database for LocalDatabase {
                     serde_json::from_value(participants_val).map_err(DbError::Serde)?;
                 let messages = self.get_messages_for_chat(chat_id).await?;
 
-                let char_id_str: String = row.get("character_id");
-
                 Ok(Chat {
                     id: chat_id,
-                    character_id: Uuid::parse_str(&char_id_str).unwrap_or_default(),
+                    character_id: row.get("character_id"),
                     messages,
                     participants,
                 })
@@ -280,21 +342,19 @@ impl Database for LocalDatabase {
     }
 
     async fn append_message(&self, chat_id: Uuid, message: ChatMessage) -> DbResult<()> {
-        // Ensure chat exists? Optional but good practice.
-        // For now, raw insert.
         let alts_json = serde_json::to_value(&message.alternatives)?;
-        let sender_id = message.sender_id.map(|u| u.to_string());
+        let sender_id = message.sender_id;
 
         sqlx::query(
-            "INSERT INTO messages (id, chat_id, role, content, sender_id, alternatives, active_index) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO messages (id, chat_id, role, content, sender_id, alternatives, active_index) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
-        .bind(message.id.to_string())
-        .bind(chat_id.to_string())
+        .bind(message.id)
+        .bind(chat_id)
         .bind(message.role)
         .bind(message.content)
         .bind(sender_id)
         .bind(alts_json)
-        .bind(message.active_index as i64)
+        .bind(message.active_index as i32)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -323,8 +383,8 @@ impl Database for LocalDatabase {
     }
 
     async fn delete_message(&self, _chat_id: Uuid, message_id: Uuid) -> DbResult<()> {
-        sqlx::query("DELETE FROM messages WHERE id = ?")
-            .bind(message_id.to_string())
+        sqlx::query("DELETE FROM messages WHERE id = $1")
+            .bind(message_id)
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -368,82 +428,10 @@ impl Database for LocalDatabase {
             )))
         }
     }
+
     async fn get_message(&self, _chat_id: Uuid, message_id: Uuid) -> DbResult<ChatMessage> {
         self.get_message_by_id(message_id)
             .await?
             .ok_or_else(|| DbError::NotFound(format!("Message {} not found", message_id)))
-    }
-}
-
-impl LocalDatabase {
-    async fn get_messages_for_chat(&self, chat_id: Uuid) -> DbResult<Vec<ChatMessage>> {
-        let rows = sqlx::query(
-            "SELECT id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id = ?",
-        )
-        .bind(chat_id.to_string())
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|row| {
-                let alts_val: Value = row.get("alternatives");
-                let alternatives: Vec<String> =
-                    serde_json::from_value(alts_val).unwrap_or_default();
-                let id_str: String = row.get("id");
-                let sender_id_str: Option<String> = row.get("sender_id");
-
-                ChatMessage {
-                    id: Uuid::parse_str(&id_str).unwrap_or_default(),
-                    role: row.get("role"),
-                    content: row.get("content"),
-                    sender_id: sender_id_str.and_then(|s| Uuid::parse_str(&s).ok()),
-                    alternatives,
-                    active_index: row.get::<i64, _>("active_index") as usize,
-                }
-            })
-            .collect())
-    }
-
-    async fn get_message_by_id(&self, message_id: Uuid) -> DbResult<Option<ChatMessage>> {
-        let row = sqlx::query(
-            "SELECT id, role, content, sender_id, alternatives, active_index FROM messages WHERE id = ?",
-        )
-        .bind(message_id.to_string())
-        .fetch_optional(&self.pool)
-        .await?;
-
-        let row = match row {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        let alts_val: Value = row.get("alternatives");
-        let alternatives: Vec<String> = serde_json::from_value(alts_val).unwrap_or_default();
-        let id_str: String = row.get("id");
-        let sender_id_str: Option<String> = row.get("sender_id");
-
-        Ok(Some(ChatMessage {
-            id: Uuid::parse_str(&id_str).unwrap_or_default(),
-            role: row.get("role"),
-            content: row.get("content"),
-            sender_id: sender_id_str.and_then(|s| Uuid::parse_str(&s).ok()),
-            alternatives,
-            active_index: row.get::<i64, _>("active_index") as usize,
-        }))
-    }
-
-    async fn save_message(&self, message_id: Uuid, msg: ChatMessage) -> DbResult<()> {
-        let alts_json = serde_json::to_value(&msg.alternatives)?;
-        sqlx::query(
-            "UPDATE messages SET content = ?, alternatives = ?, active_index = ? WHERE id = ?",
-        )
-        .bind(msg.content)
-        .bind(alts_json)
-        .bind(msg.active_index as i64)
-        .bind(message_id.to_string())
-        .execute(&self.pool)
-        .await?;
-        Ok(())
     }
 }

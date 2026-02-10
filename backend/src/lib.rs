@@ -2,7 +2,9 @@ mod dbs;
 mod handlers;
 mod openai;
 
-use crate::dbs::local::{AppState, DB_PATH, LocalDatabase};
+use crate::dbs::Database;
+use crate::dbs::local::LocalDatabase;
+use crate::dbs::postgres::PostgresDatabase;
 use crate::handlers::{
     append_message, create_character, create_chat, delete_character, delete_message, edit_message,
     list_characters, list_chats, swipe_message,
@@ -12,14 +14,22 @@ use axum::{
     Router,
     routing::{delete, get, post, put},
 };
-use std::sync::{Arc, RwLock};
+pub use dbs::DatabaseConfig;
+use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
-pub fn init(router: Router<AppState>) -> Router<()> {
-    DB_PATH.get_or_init(|| std::env::var("LOCAL_DB_PATH").unwrap());
-    let state = AppState {
-        db: Arc::new(RwLock::new(LocalDatabase::load())),
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Arc<dyn Database>,
+}
+
+pub async fn init(router: Router<AppState>, config: DatabaseConfig) -> Router<()> {
+    let db: Arc<dyn Database> = match config {
+        DatabaseConfig::Local { url } => Arc::new(LocalDatabase::new(&url).await),
+        DatabaseConfig::Postgres { url } => Arc::new(PostgresDatabase::new(&url).await),
     };
+
+    let state = AppState { db };
 
     router
         .route("/api/health", get(|| async { "OK" }))

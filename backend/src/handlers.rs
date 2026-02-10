@@ -1,4 +1,5 @@
-use crate::dbs::local::AppState;
+use crate::AppState;
+use crate::dbs::DbError;
 use axum::{
     Json,
     extract::{Path, State},
@@ -10,15 +11,21 @@ use shared::models::{
 };
 use uuid::Uuid;
 
-pub async fn list_characters(State(state): State<AppState>) -> Json<Vec<Character>> {
-    let characters = state.db.get_characters().await;
-    Json(characters)
+pub async fn list_characters(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<Character>>, StatusCode> {
+    let characters = state
+        .db
+        .get_characters()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(characters))
 }
 
 pub async fn create_character(
     State(state): State<AppState>,
     Json(payload): Json<CreateCharacterRequest>,
-) -> Json<Character> {
+) -> Result<Json<Character>, StatusCode> {
     let id = Uuid::new_v4();
     let char = Character {
         id,
@@ -30,43 +37,60 @@ pub async fn create_character(
         example_messages: payload.example_messages,
     };
 
-    state.db.create_character(char.clone()).await;
+    state
+        .db
+        .create_character(char.clone())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Json(char)
+    Ok(Json(char))
 }
 
 pub async fn delete_character(
     State(state): State<AppState>,
     Path(character_id): Path<Uuid>,
 ) -> Result<Json<()>, StatusCode> {
-    if state.db.get_character(character_id).await.is_none() {
+    let char = state.db.get_character(character_id).await;
+    if matches!(char, Err(DbError::NotFound(_))) {
         return Err(StatusCode::NOT_FOUND);
     }
+    if char.is_err() {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
 
-    state.db.delete_character(character_id).await;
+    state
+        .db
+        .delete_character(character_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(()))
 }
 
 pub async fn list_chats(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
-) -> Json<Vec<Chat>> {
+) -> Result<Json<Vec<Chat>>, StatusCode> {
     let char_id_str = params.get("character_id");
     let char_id = char_id_str.and_then(|s| Uuid::parse_str(s).ok());
 
-    let result = state.db.get_chats(char_id).await;
+    let result = state
+        .db
+        .get_chats(char_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Json(result)
+    Ok(Json(result))
 }
 
 pub async fn create_chat(
     State(state): State<AppState>,
     Json(payload): Json<CreateChatRequest>,
-) -> Json<Chat> {
+) -> Result<Json<Chat>, StatusCode> {
     let id = Uuid::new_v4();
     let mut messages = Vec::new();
 
-    if let Some(char) = state.db.get_character(payload.character_id).await
+    let char_opt = state.db.get_character(payload.character_id).await;
+    if let Ok(char) = char_opt
         && !char.first_message.is_empty()
     {
         messages.push(ChatMessage::new("assistant", char.first_message));
@@ -82,18 +106,26 @@ pub async fn create_chat(
         }],
     };
 
-    state.db.create_chat(chat.clone()).await;
+    state
+        .db
+        .create_chat(chat.clone())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Json(chat)
+    Ok(Json(chat))
 }
 
 pub async fn append_message(
     State(state): State<AppState>,
     Path(chat_id): Path<Uuid>,
     Json(payload): Json<ChatMessage>,
-) -> Json<()> {
-    state.db.append_message(chat_id, payload).await;
-    Json(())
+) -> Result<Json<()>, StatusCode> {
+    state
+        .db
+        .append_message(chat_id, payload)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(()))
 }
 
 pub async fn edit_message(
@@ -101,15 +133,20 @@ pub async fn edit_message(
     Path((chat_id, message_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<EditMessageRequest>,
 ) -> Result<Json<()>, StatusCode> {
-    // Check if message exists
-    if state.db.get_message(chat_id, message_id).await.is_none() {
+    // Check if message exists (or let db handle it, but for now strict)
+    let msg = state.db.get_message(chat_id, message_id).await;
+    if matches!(msg, Err(DbError::NotFound(_))) {
         return Err(StatusCode::NOT_FOUND);
+    }
+    if msg.is_err() {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     state
         .db
         .update_message(chat_id, message_id, payload.content)
-        .await;
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(()))
 }
 
@@ -118,11 +155,19 @@ pub async fn delete_message(
     Path((chat_id, message_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<()>, StatusCode> {
     // Check if message exists
-    if state.db.get_message(chat_id, message_id).await.is_none() {
+    let msg = state.db.get_message(chat_id, message_id).await;
+    if matches!(msg, Err(DbError::NotFound(_))) {
         return Err(StatusCode::NOT_FOUND);
     }
+    if msg.is_err() {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
 
-    state.db.delete_message(chat_id, message_id).await;
+    state
+        .db
+        .delete_message(chat_id, message_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(()))
 }
 
@@ -132,10 +177,10 @@ pub async fn swipe_message(
     Json(payload): Json<SwipeRequest>,
 ) -> Result<Json<()>, StatusCode> {
     let message = state.db.get_message(chat_id, message_id).await;
-    if message.is_none() {
+    if matches!(message, Err(DbError::NotFound(_))) {
         return Err(StatusCode::NOT_FOUND);
     }
-    let message = message.unwrap();
+    let message = message.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let total = message.variant_count();
     let new_index = match payload.direction {
@@ -146,6 +191,7 @@ pub async fn swipe_message(
     state
         .db
         .set_active_alternative(chat_id, message_id, new_index)
-        .await;
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(()))
 }

@@ -70,7 +70,7 @@ impl ChatMessage {
         }
     }
 
-    /// Total number of variants (1 primary + alternatives)
+    /// Total number of variants (1 primary and alternatives)
     pub fn variant_count(&self) -> usize {
         1 + self.alternatives.len()
     }
@@ -126,8 +126,10 @@ pub struct EditMessageRequest {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum SwipeDirection {
-    Left,  // Show previous alternative
-    Right, // Show next alternative
+    /// Show previous alternative
+    Left,
+    /// Show next alternative
+    Right,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

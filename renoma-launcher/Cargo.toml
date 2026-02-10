@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tracing-subscriber = { version = "*", features = ["env-filter"] }
 tower-http = { version = "*", features = ["fs"] }
 tokio = { version = "*", features = ["full"] }
 clap = { version = "*", features = ["derive"] }
 backend = { path = "../backend" }
+tracing-subscriber = "*"
 tracing = "*"
 axum = "*"
