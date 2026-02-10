@@ -10,7 +10,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     #[command(about = "Launch the app")]
-    Launch,
+    Launch { extra_arguments: Vec<String> },
     #[command(about = "Build the app")]
     Dist { target_triple: Option<String> },
 }

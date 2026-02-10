@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli::Cli::parse();
 
     match cli.command {
-        cli::Command::Launch => {
+        cli::Command::Launch { extra_arguments } => {
             let mut cmd = std::process::Command::new("trunk");
             cmd.current_dir("frontend");
             cmd.arg("build");
@@ -19,6 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .arg("--")
                 .arg("--dist-dir")
                 .arg("frontend/dist");
+            for argument in extra_arguments {
+                cmd.arg(argument);
+            }
             cmd.spawn()?.wait()?;
 
             Ok(())

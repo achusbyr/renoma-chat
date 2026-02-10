@@ -35,6 +35,8 @@ WORKDIR /app
 # Copy the distribution directory from the builder stage
 COPY --from=builder /usr/src/renoma/Renoma /app
 
+ENV PORT=8080
+
 EXPOSE 8080
 
-ENTRYPOINT ["./renoma-launcher"]
+ENTRYPOINT ["/bin/bash", "-c", "./renoma-launcher", "${POSTGRES_URL:+--postgres-url "$POSTGRES_URL"}"]
