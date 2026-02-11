@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:trixie AS builder
+FROM rust:slim-trixie AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -22,7 +22,7 @@ COPY . .
 RUN cargo xtask dist
 
 # Runtime stage
-FROM debian:trixie
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -39,4 +39,4 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-ENTRYPOINT ["/bin/bash", "-c", "./renoma-launcher", "${POSTGRES_URL:+--postgres-url "$POSTGRES_URL"}"]
+ENTRYPOINT ["/usr/bin/bash", "-c", "./renoma-launcher", "${POSTGRES_URL:+--postgres-url "$POSTGRES_URL"}"]
