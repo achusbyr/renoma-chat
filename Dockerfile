@@ -39,4 +39,6 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-ENTRYPOINT ["/usr/bin/bash", "-c", "./renoma-launcher", "${POSTGRES_URL:+--postgres-url "$POSTGRES_URL"}"]
+SHELL ["/usr/bin/bash", "-c"]
+
+ENTRYPOINT ./renoma-launcher ${POSTGRES_URL:+--postgres-url "$POSTGRES_URL"}
