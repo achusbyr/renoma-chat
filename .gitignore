@@ -1,0 +1,6 @@
+target/
+frontend/dist/
+Renoma/
+.git/
+.idea/
+Cargo.lock

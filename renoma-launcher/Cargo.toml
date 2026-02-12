@@ -1,0 +1,13 @@
+[package]
+name = "renoma-launcher"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tower-http = { version = "*", features = ["fs"] }
+tokio = { version = "*", features = ["full"] }
+clap = { version = "*", features = ["derive"] }
+backend = { path = "../backend" }
+tracing-subscriber = "*"
+tracing = "*"
+axum = "*"
