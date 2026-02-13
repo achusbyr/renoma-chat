@@ -90,7 +90,7 @@ impl PostgresDatabase {
                     content: row.get("content"),
                     sender_id: row.get("sender_id"),
                     alternatives,
-                    active_index: row.get::<i32, _>("active_index") as usize,
+                    active_index: row.get::<i64, _>("active_index") as usize,
                 }
             })
             .collect())
@@ -118,7 +118,7 @@ impl PostgresDatabase {
             content: row.get("content"),
             sender_id: row.get("sender_id"),
             alternatives,
-            active_index: row.get::<i8, _>("active_index") as usize,
+            active_index: row.get::<i64, _>("active_index") as usize,
         }))
     }
 
@@ -129,7 +129,7 @@ impl PostgresDatabase {
         )
         .bind(msg.content)
         .bind(alts_json)
-        .bind(msg.active_index as i8)
+        .bind(msg.active_index as i64)
         .bind(message_id)
         .execute(&self.pool)
         .await?;
@@ -287,7 +287,7 @@ impl Database for PostgresDatabase {
                     content: row.get("content"),
                     sender_id: row.get("sender_id"),
                     alternatives,
-                    active_index: row.get::<i32, _>("active_index") as usize,
+                    active_index: row.get::<i64, _>("active_index") as usize,
                 };
 
                 messages_map.entry(chat_id).or_default().push(msg);
@@ -366,7 +366,7 @@ impl Database for PostgresDatabase {
         .bind(message.content)
         .bind(sender_id)
         .bind(alts_json)
-        .bind(message.active_index as i32)
+        .bind(message.active_index as i64)
         .execute(&self.pool)
         .await?;
         Ok(())
