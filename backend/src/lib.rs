@@ -50,6 +50,18 @@ pub async fn init(router: Router<AppState>, config: DatabaseConfig) -> Router<()
             post(swipe_message),
         )
         .route("/api/completion", post(generate_response))
+        .route(
+            "/favicon.ico",
+            get(|| async {
+                (
+                    [
+                        (axum::http::header::CONTENT_TYPE, "image/x-icon"),
+                        (axum::http::header::CACHE_CONTROL, "public, max-age=604800"),
+                    ],
+                    include_bytes!("../../frontend/favicon.ico"),
+                )
+            }),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
