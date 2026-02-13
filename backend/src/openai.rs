@@ -167,7 +167,8 @@ pub async fn generate_response(
                             if let Some(choice) = response.choices.first()
                                 && let Some(content) = &choice.delta.content {
                                     full_response.push_str(content);
-                                    yield Ok::<String, Error>(format!("data: {}\n\n", content));
+                                    let encoded = serde_json::to_string(content).unwrap_or_else(|_| format!("\"{}\"", content.replace('"', "\\\"")));
+                                    yield Ok::<String, Error>(format!("data: {}\n\n", encoded));
                                 }
                         }
                         Err(e) => {

@@ -37,7 +37,7 @@ impl ChatMessage {
     /// Create a new message with defaults for alternatives
     pub fn new(role: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             role: role.into(),
             content: content.into(),
             sender_id: None,
@@ -53,7 +53,7 @@ impl ChatMessage {
         sender_id: Uuid,
     ) -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: Uuid::now_v7(),
             role: role.into(),
             content: content.into(),
             sender_id: Some(sender_id),

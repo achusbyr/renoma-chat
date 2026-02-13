@@ -597,8 +597,8 @@ async fn process_completion_stream(
                 let line_bytes = buffer.drain(..pos + 1).collect::<Vec<u8>>();
                 let line = String::from_utf8_lossy(&line_bytes);
 
-                if let Some(data) = line.trim_start().strip_prefix("data: ") {
-                    let data = data.trim_end();
+                if let Some(data) = line.strip_prefix("data: ") {
+                    let data = data.trim_end(); // Only trim trailing newlines/spaces from the SSE data: line itself
                     if data == "[DONE]" {
                         break;
                     }
@@ -612,14 +612,13 @@ async fn process_completion_stream(
                         break;
                     }
 
-                    // SSE data chunks often contain individual characters or small fragments
-                    // We append them directly to the response
-                    full_response.push_str(data);
-
-                    // If the original data had a trailing newline that was part of the message content
-                    // it would be encoded as a separate data chunk or handled by the server.
-                    // Given the server implementation: yield Ok::<String, Error>(format!("data: {}\n\n", content));
-                    // Content itself might contain newlines if the server isn't escaping them.
+                    // Parse the JSON-encoded chunk from the backend
+                    if let Ok(content_chunk) = serde_json::from_str::<String>(data) {
+                        full_response.push_str(&content_chunk);
+                    } else {
+                        // Fallback to raw data if JSON parsing fails (backwards compatibility or noise)
+                        full_response.push_str(data);
+                    }
 
                     store.dispatch(Action::UpdateMessageContent {
                         message_id,

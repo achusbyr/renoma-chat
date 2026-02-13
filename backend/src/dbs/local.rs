@@ -196,7 +196,7 @@ impl Database for LocalDatabase {
             // Let's use a dynamic query builder approach for "IN (?)"
             let placeholders: Vec<String> = chat_ids.iter().map(|_| "?".to_string()).collect();
             let query = format!(
-                "SELECT id, chat_id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id IN ({})",
+                "SELECT id, chat_id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id IN ({}) ORDER BY id",
                 placeholders.join(",")
             );
 
@@ -390,7 +390,7 @@ impl Database for LocalDatabase {
 impl LocalDatabase {
     async fn get_messages_for_chat(&self, chat_id: Uuid) -> DbResult<Vec<ChatMessage>> {
         let rows = sqlx::query(
-            "SELECT id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id = ?",
+            "SELECT id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id = ? ORDER BY id",
         )
         .bind(chat_id.to_string())
         .fetch_all(&self.pool)

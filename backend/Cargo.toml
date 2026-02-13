@@ -13,7 +13,7 @@ sqlx = { version = "*", features = [
 ] }
 tower-http = { version = "*", features = ["fs", "trace", "cors"] }
 async-openai = { version = "*", features = ["chat-completion"] }
-uuid = { version = "*", features = ["v4", "serde"] }
+uuid = { version = "*", features = ["v4", "v7", "serde"] }
 shared = { path = "../shared" }
 async-stream = "*"
 async-trait = "*"

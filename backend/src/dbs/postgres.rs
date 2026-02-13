@@ -264,7 +264,7 @@ impl Database for PostgresDatabase {
                 .map(|(i, _)| format!("${}", i + 1))
                 .collect();
             let query = format!(
-                "SELECT id, chat_id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id IN ({})",
+                "SELECT id, chat_id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id IN ({}) ORDER BY id",
                 placeholders.join(",")
             );
 
