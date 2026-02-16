@@ -92,11 +92,7 @@ pub fn settings_modal() -> Html {
             let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
             let val = select.value();
             let mut s = (*local_state).clone();
-            if val.is_empty() {
-                s.reasoning_effort = None;
-            } else {
-                s.reasoning_effort = Some(val);
-            }
+            s.reasoning_effort = val;
             local_state.set(s);
         })
     };
@@ -162,10 +158,10 @@ pub fn settings_modal() -> Html {
                             <div class="form-group">
                                 <label class="form-label">{"Reasoning Effort"}</label>
                                 <select class="form-select" onchange={on_reasoning_change}>
-                                    <option value="" selected={local_state.reasoning_effort.is_none()}>{"Disabled"}</option>
-                                    <option value="low" selected={local_state.reasoning_effort.as_deref() == Some("low")}>{"Low"}</option>
-                                    <option value="medium" selected={local_state.reasoning_effort.as_deref() == Some("medium")}>{"Medium"}</option>
-                                    <option value="high" selected={local_state.reasoning_effort.as_deref() == Some("high")}>{"High"}</option>
+                                    <option value="none" selected={local_state.reasoning_effort == "none"}>{"None"}</option>
+                                    <option value="low" selected={local_state.reasoning_effort == "low"}>{"Low"}</option>
+                                    <option value="medium" selected={local_state.reasoning_effort == "medium"}>{"Medium"}</option>
+                                    <option value="high" selected={local_state.reasoning_effort == "high"}>{"High"}</option>
                                 </select>
                             </div>
                         </div>

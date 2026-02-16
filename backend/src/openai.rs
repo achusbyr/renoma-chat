@@ -143,15 +143,14 @@ pub async fn generate_response(
         .temperature(payload.temperature.unwrap_or(0.7))
         .max_tokens(payload.max_tokens.unwrap_or(4096));
 
-    if let Some(effort_str) = payload.reasoning_effort {
-        let effort = match effort_str.as_str() {
-            "low" => async_openai::types::chat::ReasoningEffort::Low,
-            "medium" => async_openai::types::chat::ReasoningEffort::Medium,
-            "high" => async_openai::types::chat::ReasoningEffort::High,
-            _ => async_openai::types::chat::ReasoningEffort::Medium,
-        };
-        builder.reasoning_effort(effort);
-    }
+    let effort = match payload.reasoning_effort.as_str() {
+        "low" => async_openai::types::chat::ReasoningEffort::Low,
+        "medium" => async_openai::types::chat::ReasoningEffort::Medium,
+        "high" => async_openai::types::chat::ReasoningEffort::High,
+        "none" => async_openai::types::chat::ReasoningEffort::None,
+        _ => async_openai::types::chat::ReasoningEffort::Medium,
+    };
+    builder.reasoning_effort(effort);
 
     let request = match builder.build() {
         Ok(req) => req,

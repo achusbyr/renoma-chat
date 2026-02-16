@@ -121,7 +121,7 @@ pub struct CompletionRequest {
     pub model: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u16>,
-    pub reasoning_effort: Option<String>,
+    pub reasoning_effort: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -133,7 +133,7 @@ pub struct EditMessageRequest {
 pub enum SwipeDirection {
     /// Show previous alternative
     Left,
-    /// Show next alternative
+    /// Show the next alternative
     Right,
 }
 
@@ -149,19 +149,18 @@ pub struct AppSettings {
     pub model: String,
     pub temperature: f32,
     pub max_tokens: u16,
-    #[serde(default)]
-    pub reasoning_effort: Option<String>,
+    pub reasoning_effort: String,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            api_key: "".to_string(),
+            api_key: String::new(),
             api_base: "https://openrouter.ai/api/v1".to_string(),
             model: "tngtech/deepseek-r1t2-chimera:free".to_string(),
             temperature: 0.7,
             max_tokens: 4096,
-            reasoning_effort: None,
+            reasoning_effort: "medium".to_string(),
         }
     }
 }
