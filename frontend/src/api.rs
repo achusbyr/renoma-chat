@@ -36,6 +36,14 @@ pub async fn fetch_chats(char_id: Uuid) -> Result<Vec<Chat>, gloo_net::Error> {
         .await
 }
 
+pub async fn get_chat(chat_id: Uuid) -> Result<Chat, gloo_net::Error> {
+    Request::get(&format!("{}/chats/{}", API_BASE, chat_id))
+        .send()
+        .await?
+        .json()
+        .await
+}
+
 pub async fn create_chat(char_id: Uuid) -> Result<Chat, gloo_net::Error> {
     Request::post(&format!("{}/chats", API_BASE))
         .json(&CreateChatRequest {

@@ -7,7 +7,7 @@ use crate::dbs::local::LocalDatabase;
 use crate::dbs::postgres::PostgresDatabase;
 use crate::handlers::{
     append_message, create_character, create_chat, delete_character, delete_chat, delete_message,
-    edit_message, list_characters, list_chats, swipe_message,
+    edit_message, get_chat, list_characters, list_chats, swipe_message,
 };
 use crate::openai::generate_response;
 use axum::{
@@ -39,7 +39,7 @@ pub async fn init(router: Router<AppState>, config: DatabaseConfig) -> Router<()
         )
         .route("/api/characters/{character_id}", delete(delete_character))
         .route("/api/chats", get(list_chats).post(create_chat))
-        .route("/api/chats/{chat_id}", delete(delete_chat))
+        .route("/api/chats/{chat_id}", get(get_chat).delete(delete_chat))
         .route("/api/chats/{chat_id}/message", post(append_message))
         .route(
             "/api/chats/{chat_id}/messages/{message_id}",

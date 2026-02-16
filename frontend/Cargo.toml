@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-web-sys = { version = "*", features = ["Navigator", "Clipboard"] }
+web-sys = { version = "*", features = [
+    "Navigator",
+    "Clipboard",
+    "HtmlSelectElement",
+] }
 uuid = { version = "*", features = ["v7", "serde", "js"] }
 yew = { version = "*", features = ["csr"] }
 shared = { path = "../shared" }

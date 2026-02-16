@@ -250,63 +250,16 @@ impl Database for PostgresDatabase {
                 .await?
         };
 
-        // Collect chat IDs to fetch messages in batch
-        let chat_ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
-
-        // Fetch all messages for these chats in one query if there are any chats
-        let mut messages_map: std::collections::HashMap<Uuid, Vec<ChatMessage>> =
-            std::collections::HashMap::new();
-
-        if !chat_ids.is_empty() {
-            let placeholders: Vec<String> = chat_ids
-                .iter()
-                .enumerate()
-                .map(|(i, _)| format!("${}", i + 1))
-                .collect();
-            let query = format!(
-                "SELECT id, chat_id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id IN ({}) ORDER BY id",
-                placeholders.join(",")
-            );
-
-            let mut query_builder = sqlx::query(&query);
-            for id in &chat_ids {
-                query_builder = query_builder.bind(id);
-            }
-
-            let msg_rows = query_builder.fetch_all(&self.pool).await?;
-
-            for row in msg_rows {
-                let chat_id: Uuid = row.get("chat_id");
-                let alts_val: Value = row.get("alternatives");
-                let alternatives: Vec<String> =
-                    serde_json::from_value(alts_val).unwrap_or_default();
-
-                let msg = ChatMessage {
-                    id: row.get("id"),
-                    role: row.get("role"),
-                    content: row.get("content"),
-                    sender_id: row.get("sender_id"),
-                    alternatives,
-                    active_index: row.get::<i64, _>("active_index") as usize,
-                };
-
-                messages_map.entry(chat_id).or_default().push(msg);
-            }
-        }
-
         let mut chats = Vec::new();
         for row in rows {
             let participants_val: Value = row.get("participants");
             let participants: Vec<ChatParticipant> =
                 serde_json::from_value(participants_val).map_err(DbError::Serde)?;
-            let chat_id: Uuid = row.get("id");
-
-            let messages = messages_map.remove(&chat_id).unwrap_or_default(); // Needs Uuid key
 
             chats.push(Chat {
-                id: chat_id,
+                id: row.get("id"),
                 character_id: row.get("character_id"),
-                messages,
+                messages: Vec::new(),
                 participants,
             });
         }

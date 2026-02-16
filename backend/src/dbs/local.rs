@@ -180,69 +180,18 @@ impl Database for LocalDatabase {
                 .await?
         };
 
-        // Collect chat IDs to fetch messages in batch
-        let chat_ids: Vec<String> = rows.iter().map(|r| r.get::<String, _>("id")).collect();
-
-        // Fetch all messages for these chats in one query if there are any chats
-        let mut messages_map: std::collections::HashMap<String, Vec<ChatMessage>> =
-            std::collections::HashMap::new();
-
-        if !chat_ids.is_empty() {
-            // Basic workaround for "IN" clause with vector param (not directly supported easily in all sqlx versions without macro magic or query building)
-            // For simplicity/safety with current dependencies, we can just loop if this list is small, OR construct a dynamic query.
-            // But to solve N+1, constructing a dynamic query or fetching ALL messages (if local DB isn't huge) is better.
-            // Given it's a local app, fetching all messages for relevant chats is plausible.
-
-            // Let's use a dynamic query builder approach for "IN (?)"
-            let placeholders: Vec<String> = chat_ids.iter().map(|_| "?".to_string()).collect();
-            let query = format!(
-                "SELECT id, chat_id, role, content, sender_id, alternatives, active_index FROM messages WHERE chat_id IN ({}) ORDER BY id",
-                placeholders.join(",")
-            );
-
-            let mut query_builder = sqlx::query(&query);
-            for id in &chat_ids {
-                query_builder = query_builder.bind(id);
-            }
-
-            let msg_rows = query_builder.fetch_all(&self.pool).await?;
-
-            for row in msg_rows {
-                let chat_id_str: String = row.get("chat_id");
-                let alts_val: Value = row.get("alternatives");
-                let alternatives: Vec<String> =
-                    serde_json::from_value(alts_val).unwrap_or_default();
-                let id_str: String = row.get("id");
-                let sender_id_str: Option<String> = row.get("sender_id");
-
-                let msg = ChatMessage {
-                    id: Uuid::parse_str(&id_str).unwrap_or_default(),
-                    role: row.get("role"),
-                    content: row.get("content"),
-                    sender_id: sender_id_str.and_then(|s| Uuid::parse_str(&s).ok()),
-                    alternatives,
-                    active_index: row.get::<i64, _>("active_index") as usize,
-                };
-
-                messages_map.entry(chat_id_str).or_default().push(msg);
-            }
-        }
-
         let mut chats = Vec::new();
         for row in rows {
             let participants_val: Value = row.get("participants");
             let participants: Vec<ChatParticipant> =
                 serde_json::from_value(participants_val).map_err(DbError::Serde)?;
             let chat_id_str: String = row.get("id");
-            let chat_id = Uuid::parse_str(&chat_id_str).unwrap_or_default();
-
-            let messages = messages_map.remove(&chat_id_str).unwrap_or_default();
-
             let char_id_str: String = row.get("character_id");
+
             chats.push(Chat {
-                id: chat_id,
+                id: Uuid::parse_str(&chat_id_str).unwrap_or_default(),
                 character_id: Uuid::parse_str(&char_id_str).unwrap_or_default(),
-                messages,
+                messages: Vec::new(),
                 participants,
             });
         }

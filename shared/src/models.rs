@@ -121,6 +121,7 @@ pub struct CompletionRequest {
     pub model: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u16>,
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -148,6 +149,8 @@ pub struct AppSettings {
     pub model: String,
     pub temperature: f32,
     pub max_tokens: u16,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -158,6 +161,7 @@ impl Default for AppSettings {
             model: "tngtech/deepseek-r1t2-chimera:free".to_string(),
             temperature: 0.7,
             max_tokens: 4096,
+            reasoning_effort: None,
         }
     }
 }

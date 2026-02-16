@@ -136,13 +136,24 @@ pub async fn generate_response(
     let character = state.db.get_character(chat.character_id).await.ok();
     let conversation = build_conversation(&chat.messages, character.as_ref(), truncate_at);
 
-    let request = match CreateChatCompletionRequestArgs::default()
+    let mut builder = CreateChatCompletionRequestArgs::default();
+    builder
         .model(payload.model.clone())
         .messages(conversation)
         .temperature(payload.temperature.unwrap_or(0.7))
-        .max_tokens(payload.max_tokens.unwrap_or(4096))
-        .build()
-    {
+        .max_tokens(payload.max_tokens.unwrap_or(4096));
+
+    if let Some(effort_str) = payload.reasoning_effort {
+        let effort = match effort_str.as_str() {
+            "low" => async_openai::types::chat::ReasoningEffort::Low,
+            "medium" => async_openai::types::chat::ReasoningEffort::Medium,
+            "high" => async_openai::types::chat::ReasoningEffort::High,
+            _ => async_openai::types::chat::ReasoningEffort::Medium,
+        };
+        builder.reasoning_effort(effort);
+    }
+
+    let request = match builder.build() {
         Ok(req) => req,
         Err(e) => {
             tracing::error!("Failed to build completion request: {:?}", e);

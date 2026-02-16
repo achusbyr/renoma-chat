@@ -56,6 +56,12 @@ pub fn char_sidebar() -> Html {
         let store = store.clone();
         Callback::from(move |id: uuid::Uuid| {
             store.dispatch(Action::SelectChat(id));
+            let store = store.clone();
+            yew::platform::spawn_local(async move {
+                if let Ok(chat) = api::get_chat(id).await {
+                    store.dispatch(Action::SetActiveChat(chat));
+                }
+            });
         })
     };
 
@@ -159,8 +165,8 @@ pub fn char_sidebar() -> Html {
                                     <div class="char-name">{&char.name}</div>
                                     <div class="char-desc">{&char.description}</div>
                                 </div>
-                                <button class="delete-btn" onclick={move |e: MouseEvent| { e.stop_propagation(); on_delete_click.emit(id); }} title="Delete character">
-                                    <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>
+                                <button class="list-action-btn" onclick={move |e: MouseEvent| { e.stop_propagation(); on_delete_click.emit(id); }} title="Delete character">
+                                    <svg viewBox="0 0 24 24"><path fill="white" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>
                                 </button>
                             </div>
                             if is_active {
@@ -184,13 +190,11 @@ pub fn char_sidebar() -> Html {
                                                 </div>
                                                 <span class="chat-item-label">{label}</span>
                                                 <button
-                                                    class="chat-delete-btn"
+                                                    class="list-action-btn"
                                                     onclick={move |e: MouseEvent| { e.stop_propagation(); on_delete.emit(chat_id); }}
                                                     title="Delete chat"
                                                 >
-                                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-                                                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                                                    </svg>
+                                                    <svg viewBox="0 0 24 24"><path fill="white" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>
                                                 </button>
                                             </div>
                                         }
@@ -212,7 +216,7 @@ pub fn char_sidebar() -> Html {
             </div>
 
             <div class="sidebar-footer">
-                {"Renoma v0.1.0"}
+                {format!("Renoma v{}", env!("CARGO_PKG_VERSION"))}
             </div>
         </div>
     }

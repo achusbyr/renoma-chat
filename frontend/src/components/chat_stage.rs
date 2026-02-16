@@ -154,6 +154,7 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
                                     model: settings.model,
                                     temperature: Some(settings.temperature),
                                     max_tokens: Some(settings.max_tokens),
+                                    reasoning_effort: settings.reasoning_effort.clone(),
                                 },
                                 next_msg_id,
                             ));
@@ -181,6 +182,7 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
                             model: settings.model,
                             temperature: Some(settings.temperature),
                             max_tokens: Some(settings.max_tokens),
+                            reasoning_effort: settings.reasoning_effort.clone(),
                         },
                         assistant_msg_id,
                     ));
@@ -201,6 +203,7 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
                             model: settings.model,
                             temperature: Some(settings.temperature),
                             max_tokens: Some(settings.max_tokens),
+                            reasoning_effort: settings.reasoning_effort.clone(),
                         },
                         message_id,
                     ));
@@ -441,6 +444,7 @@ pub fn chat_stage() -> Html {
                             model: settings.model,
                             temperature: Some(settings.temperature),
                             max_tokens: Some(settings.max_tokens),
+                            reasoning_effort: settings.reasoning_effort.clone(),
                         },
                         assistant_msg_id,
                     )
@@ -500,7 +504,6 @@ pub fn chat_stage() -> Html {
             <div class={classes!("chat-message-list")} ref={container_ref}>
                 if store.active_chat.is_none() {
                     <div class="chat-placeholder">
-                        <div class="chat-placeholder-icon">{"✨"}</div>
                         if store.active_character_id.is_some() {
                             <div>{"Select a chat from the sidebar or create a new one"}</div>
                         } else {

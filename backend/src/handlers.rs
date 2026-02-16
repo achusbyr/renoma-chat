@@ -131,6 +131,21 @@ pub async fn delete_chat(
     Ok(Json(()))
 }
 
+pub async fn get_chat(
+    State(state): State<AppState>,
+    Path(chat_id): Path<Uuid>,
+) -> Result<Json<Chat>, StatusCode> {
+    let chat = state.db.get_chat(chat_id).await.map_err(|e| {
+        if matches!(e, DbError::NotFound(_)) {
+            StatusCode::NOT_FOUND
+        } else {
+            tracing::error!("Failed to get chat: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    })?;
+    Ok(Json(chat))
+}
+
 pub async fn append_message(
     State(state): State<AppState>,
     Path(chat_id): Path<Uuid>,

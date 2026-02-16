@@ -51,6 +51,7 @@ pub enum Action {
     SetCharacters(Vec<Character>),
     SetChats(Vec<Chat>),
     SelectChat(Uuid),
+    SetActiveChat(Chat),
     AddChat(Chat),
     DeleteChat(Uuid),
     SetStream(Option<StreamingContext>),
@@ -111,6 +112,13 @@ impl Reducible for State {
                 if let Some(chat) = next.chats.iter().find(|c| c.id == id) {
                     next.active_chat = Some(chat.clone());
                 }
+            }
+            Action::SetActiveChat(chat) => {
+                // Update in list if present
+                if let Some(c) = next.chats.iter_mut().find(|c| c.id == chat.id) {
+                    *c = chat.clone();
+                }
+                next.active_chat = Some(chat);
             }
             Action::AddChat(chat) => {
                 next.chats.push(chat.clone());

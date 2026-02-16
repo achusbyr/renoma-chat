@@ -86,6 +86,21 @@ pub fn settings_modal() -> Html {
         })
     };
 
+    let on_reasoning_change = {
+        let local_state = local_state.clone();
+        Callback::from(move |e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            let val = select.value();
+            let mut s = (*local_state).clone();
+            if val.is_empty() {
+                s.reasoning_effort = None;
+            } else {
+                s.reasoning_effort = Some(val);
+            }
+            local_state.set(s);
+        })
+    };
+
     html! {
         <div class="modal-overlay" onclick={on_overlay_click}>
             <div class="modal-content" onclick={|e: MouseEvent| e.stop_propagation()}>
@@ -113,33 +128,48 @@ pub fn settings_modal() -> Html {
                         />
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label">{"Model"}</label>
-                        <input type="text" class="form-input"
-                            value={local_state.model.clone()}
-                            oninput={on_model_input}
-                            placeholder="tngtech/deepseek-r1t2-chimera:free"
-                        />
-                    </div>
+                    <details class="model-config-section">
+                        <summary>{"Model Configuration"}</summary>
+                        <div class="model-config-content">
+                            <div class="form-group">
+                                <label class="form-label">{"Model"}</label>
+                                <input type="text" class="form-input"
+                                    value={local_state.model.clone()}
+                                    oninput={on_model_input}
+                                    placeholder="tngtech/deepseek-r1t2-chimera:free"
+                                />
+                            </div>
 
-                    <div class="form-grid-2">
-                         <div class="form-group">
-                            <label class="form-label">{"Temperature"}</label>
-                            <input type="number" class="form-input"
-                                step="0.1" min="0" max="2"
-                                value={local_state.temperature.to_string()}
-                                oninput={on_temperature_input}
-                            />
-                         </div>
-                         <div class="form-group">
-                            <label class="form-label">{"Max Tokens"}</label>
-                            <input type="number" class="form-input"
-                                min="1"
-                                value={local_state.max_tokens.to_string()}
-                                oninput={on_max_tokens_input}
-                            />
-                         </div>
-                    </div>
+                            <div class="form-grid-2">
+                                <div class="form-group">
+                                    <label class="form-label">{"Temperature"}</label>
+                                    <input type="number" class="form-input"
+                                        step="0.1" min="0" max="2"
+                                        value={local_state.temperature.to_string()}
+                                        oninput={on_temperature_input}
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"Max Tokens"}</label>
+                                    <input type="number" class="form-input"
+                                        min="1"
+                                        value={local_state.max_tokens.to_string()}
+                                        oninput={on_max_tokens_input}
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">{"Reasoning Effort"}</label>
+                                <select class="form-select" onchange={on_reasoning_change}>
+                                    <option value="" selected={local_state.reasoning_effort.is_none()}>{"Disabled"}</option>
+                                    <option value="low" selected={local_state.reasoning_effort.as_deref() == Some("low")}>{"Low"}</option>
+                                    <option value="medium" selected={local_state.reasoning_effort.as_deref() == Some("medium")}>{"Medium"}</option>
+                                    <option value="high" selected={local_state.reasoning_effort.as_deref() == Some("high")}>{"High"}</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
 
                     <div class="form-actions">
                         <button class="btn btn-secondary" onclick={on_cancel}>{"Cancel"}</button>
