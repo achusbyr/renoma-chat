@@ -60,7 +60,19 @@ pub async fn init(router: Router<AppState>, config: DatabaseConfig) -> Router<()
         )
         .route("/api/completion", post(generate_response))
         .route("/api/plugins", get(list_plugins))
+        .route("/api/plugins/install", post(handlers::install_plugin))
         .route("/api/plugins/{name}/toggle", post(toggle_plugin))
+        .route(
+            "/api/plugins/discover",
+            post(|state: axum::extract::State<AppState>| async move {
+                state
+                    .plugins
+                    .discover_plugins("./plugins")
+                    .await
+                    .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+                Ok::<(), axum::http::StatusCode>(())
+            }),
+        )
         .route(
             "/favicon.ico",
             get(|| async {

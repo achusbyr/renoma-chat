@@ -3,7 +3,7 @@ use shared::models::Tool;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
-    pub jsonrpc: String,
+    pub json_rpc: String,
     pub method: String,
     pub params: Option<serde_json::Value>,
     pub id: Option<PluginRequestId>,
@@ -11,7 +11,7 @@ pub struct JsonRpcRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcNotification {
-    pub jsonrpc: String,
+    pub json_rpc: String,
     pub method: String,
     pub params: Option<serde_json::Value>,
 }
@@ -33,7 +33,7 @@ pub enum PluginRequestId {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcResponse {
-    pub jsonrpc: String,
+    pub json_rpc: String,
     pub result: Option<serde_json::Value>,
     pub error: Option<JsonRpcError>,
     pub id: Option<PluginRequestId>,

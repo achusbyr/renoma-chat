@@ -16,6 +16,7 @@ pub struct State {
     pub modal_open: Option<ModalType>,
     pub active_stream: Option<StreamingContext>,
     pub editing_message_id: Option<Uuid>,
+    pub plugins: Vec<PluginManifest>,
 }
 
 impl Default for State {
@@ -31,6 +32,7 @@ impl Default for State {
             modal_open: None,
             active_stream: None,
             editing_message_id: None,
+            plugins: Vec::new(),
         }
     }
 }
@@ -80,6 +82,7 @@ pub enum Action {
         message_id: Uuid,
         direction: i32,
     },
+    SetPlugins(Vec<PluginManifest>),
 }
 
 impl Reducible for State {
@@ -229,6 +232,9 @@ impl Reducible for State {
             }
             Action::CloseChat => {
                 next.active_chat = None;
+            }
+            Action::SetPlugins(plugins) => {
+                next.plugins = plugins;
             }
         }
 

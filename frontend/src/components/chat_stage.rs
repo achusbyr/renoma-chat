@@ -7,7 +7,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{Element, HtmlTextAreaElement, js_sys};
 use yew::prelude::*;
 
-/// Props for individual message bubble component
+/// Props for an individual message bubble component
 #[derive(Properties, PartialEq)]
 pub struct MessageBubbleProps {
     pub message: ChatMessage,
@@ -359,7 +359,7 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
 fn persist<F, Fut>(store: &StoreContext, f: F)
 where
     F: FnOnce(uuid::Uuid) -> Fut + 'static,
-    Fut: std::future::Future<Output = Result<(), gloo_net::Error>> + 'static,
+    Fut: Future<Output = Result<(), gloo_net::Error>> + 'static,
 {
     if let Some(chat_id) = store.active_chat.as_ref().map(|c| c.id) {
         yew::platform::spawn_local(async move {

@@ -51,7 +51,7 @@ impl PostgresDatabase {
         .await
         .expect("Failed to create chats table");
 
-        // Note: active_index is INTEGER. alternatives is JSONB.
+        // Note: active_index is INTEGER. alternatives are JSONB.
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS messages (
                 id UUID PRIMARY KEY,
@@ -164,59 +164,6 @@ impl Database for PostgresDatabase {
             .collect())
     }
 
-    async fn create_character(&self, character: Character) -> DbResult<()> {
-        sqlx::query(
-            "INSERT INTO characters (id, name, description, personality, scenario, first_message, example_messages) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        )
-        .bind(character.id)
-        .bind(character.name)
-        .bind(character.description)
-        .bind(character.personality)
-        .bind(character.scenario)
-        .bind(character.first_message)
-        .bind(character.example_messages)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    async fn delete_character(&self, character_id: Uuid) -> DbResult<()> {
-        let text_id = character_id; // Postgres driver handles UUIDs natively
-
-        // First get all chats
-        let chats = self.get_chats(Some(character_id)).await?;
-        for chat in chats {
-            // Delete messages for chat
-            sqlx::query("DELETE FROM messages WHERE chat_id = $1")
-                .bind(chat.id)
-                .execute(&self.pool)
-                .await?;
-            // Delete chat
-            sqlx::query("DELETE FROM chats WHERE id = $1")
-                .bind(chat.id)
-                .execute(&self.pool)
-                .await?;
-        }
-
-        sqlx::query("DELETE FROM characters WHERE id = $1")
-            .bind(text_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
-    async fn delete_chat(&self, chat_id: Uuid) -> DbResult<()> {
-        sqlx::query("DELETE FROM messages WHERE chat_id = $1")
-            .bind(chat_id)
-            .execute(&self.pool)
-            .await?;
-        sqlx::query("DELETE FROM chats WHERE id = $1")
-            .bind(chat_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
     async fn get_character(&self, character_id: Uuid) -> DbResult<Character> {
         let row = sqlx::query(
             "SELECT id, name, description, personality, scenario, first_message, example_messages FROM characters WHERE id = $1",
@@ -270,22 +217,6 @@ impl Database for PostgresDatabase {
         Ok(chats)
     }
 
-    async fn create_chat(&self, chat: Chat) -> DbResult<()> {
-        let participants_json = serde_json::to_value(&chat.participants)?;
-        sqlx::query("INSERT INTO chats (id, character_id, participants) VALUES ($1, $2, $3)")
-            .bind(chat.id)
-            .bind(chat.character_id)
-            .bind(participants_json)
-            .execute(&self.pool)
-            .await?;
-
-        // Also insert initial messages if any
-        for msg in chat.messages {
-            self.append_message(chat.id, msg).await?;
-        }
-        Ok(())
-    }
-
     async fn get_chat(&self, chat_id: Uuid) -> DbResult<Chat> {
         let row = sqlx::query("SELECT id, character_id, participants FROM chats WHERE id = $1")
             .bind(chat_id)
@@ -310,6 +241,89 @@ impl Database for PostgresDatabase {
         }
     }
 
+    async fn get_message(&self, _chat_id: Uuid, message_id: Uuid) -> DbResult<ChatMessage> {
+        self.get_message_by_id(message_id)
+            .await?
+            .ok_or_else(|| DbError::NotFound(format!("Message {} not found", message_id)))
+    }
+
+    async fn create_character(&self, character: Character) -> DbResult<()> {
+        sqlx::query(
+            "INSERT INTO characters (id, name, description, personality, scenario, first_message, example_messages) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(character.id)
+        .bind(character.name)
+        .bind(character.description)
+        .bind(character.personality)
+        .bind(character.scenario)
+        .bind(character.first_message)
+        .bind(character.example_messages)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn create_chat(&self, chat: Chat) -> DbResult<()> {
+        let participants_json = serde_json::to_value(&chat.participants)?;
+        sqlx::query("INSERT INTO chats (id, character_id, participants) VALUES ($1, $2, $3)")
+            .bind(chat.id)
+            .bind(chat.character_id)
+            .bind(participants_json)
+            .execute(&self.pool)
+            .await?;
+
+        // Also insert initial messages if any
+        for msg in chat.messages {
+            self.append_message(chat.id, msg).await?;
+        }
+        Ok(())
+    }
+
+    async fn delete_character(&self, character_id: Uuid) -> DbResult<()> {
+        let text_id = character_id; // Postgres driver handles UUIDs natively
+
+        // First, get all chats
+        let chats = self.get_chats(Some(character_id)).await?;
+        for chat in chats {
+            // Delete messages for chat
+            sqlx::query("DELETE FROM messages WHERE chat_id = $1")
+                .bind(chat.id)
+                .execute(&self.pool)
+                .await?;
+            // Delete chat
+            sqlx::query("DELETE FROM chats WHERE id = $1")
+                .bind(chat.id)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        sqlx::query("DELETE FROM characters WHERE id = $1")
+            .bind(text_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn delete_chat(&self, chat_id: Uuid) -> DbResult<()> {
+        sqlx::query("DELETE FROM messages WHERE chat_id = $1")
+            .bind(chat_id)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM chats WHERE id = $1")
+            .bind(chat_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn delete_message(&self, _chat_id: Uuid, message_id: Uuid) -> DbResult<()> {
+        sqlx::query("DELETE FROM messages WHERE id = $1")
+            .bind(message_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     async fn append_message(&self, chat_id: Uuid, message: ChatMessage) -> DbResult<()> {
         let alts_json = serde_json::to_value(&message.alternatives)?;
         let sender_id = message.sender_id;
@@ -329,6 +343,25 @@ impl Database for PostgresDatabase {
         Ok(())
     }
 
+    async fn append_alternative(
+        &self,
+        _chat_id: Uuid,
+        message_id: Uuid,
+        content: String,
+    ) -> DbResult<()> {
+        if let Some(mut msg) = self.get_message_by_id(message_id).await? {
+            msg.alternatives.push(content);
+            msg.active_index = msg.alternatives.len();
+            self.save_message(message_id, msg).await?;
+            Ok(())
+        } else {
+            Err(DbError::NotFound(format!(
+                "Message {} not found",
+                message_id
+            )))
+        }
+    }
+
     async fn update_message(
         &self,
         _chat_id: Uuid,
@@ -341,33 +374,6 @@ impl Database for PostgresDatabase {
             } else if let Some(alt) = msg.alternatives.get_mut(msg.active_index - 1) {
                 *alt = content;
             }
-            self.save_message(message_id, msg).await?;
-            Ok(())
-        } else {
-            Err(DbError::NotFound(format!(
-                "Message {} not found",
-                message_id
-            )))
-        }
-    }
-
-    async fn delete_message(&self, _chat_id: Uuid, message_id: Uuid) -> DbResult<()> {
-        sqlx::query("DELETE FROM messages WHERE id = $1")
-            .bind(message_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
-    async fn append_alternative(
-        &self,
-        _chat_id: Uuid,
-        message_id: Uuid,
-        content: String,
-    ) -> DbResult<()> {
-        if let Some(mut msg) = self.get_message_by_id(message_id).await? {
-            msg.alternatives.push(content);
-            msg.active_index = msg.alternatives.len();
             self.save_message(message_id, msg).await?;
             Ok(())
         } else {
@@ -396,11 +402,5 @@ impl Database for PostgresDatabase {
                 message_id
             )))
         }
-    }
-
-    async fn get_message(&self, _chat_id: Uuid, message_id: Uuid) -> DbResult<ChatMessage> {
-        self.get_message_by_id(message_id)
-            .await?
-            .ok_or_else(|| DbError::NotFound(format!("Message {} not found", message_id)))
     }
 }

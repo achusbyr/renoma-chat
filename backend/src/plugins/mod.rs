@@ -117,7 +117,7 @@ impl PluginManager {
 
         // Initialize handshake
         let init_req = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
+            json_rpc: "2.0".to_string(),
             method: "initialize".to_string(),
             params: Some(serde_json::to_value(InitializeParams {
                 host: "renoma".to_string(),
@@ -216,7 +216,7 @@ impl PluginManager {
                     return Err(format!("Plugin {} is disabled", plugin_name).into());
                 }
                 let req = JsonRpcRequest {
-                    jsonrpc: "2.0".to_string(),
+                    json_rpc: "2.0".to_string(),
                     method: "call_tool".to_string(),
                     params: Some(serde_json::to_value(CallToolParams {
                         name: tool_name.to_string(),

@@ -5,7 +5,7 @@ use std::io::{self, BufRead, Write};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JsonRpcRequest {
-    jsonrpc: String,
+    json_rpc: String,
     method: String,
     params: Option<serde_json::Value>,
     id: Option<serde_json::Value>,
@@ -13,7 +13,7 @@ struct JsonRpcRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JsonRpcResponse {
-    jsonrpc: String,
+    json_rpc: String,
     result: Option<serde_json::Value>,
     error: Option<JsonRpcError>,
     id: Option<serde_json::Value>,
@@ -39,7 +39,7 @@ fn main() -> io::Result<()> {
             Ok(r) => r,
             Err(e) => {
                 let resp = JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
+                    json_rpc: "2.0".to_string(),
                     result: None,
                     error: Some(JsonRpcError {
                         code: -32700,
@@ -57,7 +57,7 @@ fn main() -> io::Result<()> {
         match req.method.as_str() {
             "initialize" => {
                 let resp = JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
+                    json_rpc: "2.0".to_string(),
                     result: Some(json!({
                         "name": "dice_roll",
                         "version": "0.1.0",
@@ -132,7 +132,7 @@ fn main() -> io::Result<()> {
                     };
 
                     let resp = JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
+                        json_rpc: "2.0".to_string(),
                         result: Some(result),
                         error: None,
                         id: req.id,
@@ -142,7 +142,7 @@ fn main() -> io::Result<()> {
                     stdout.flush()?;
                 } else {
                     let resp = JsonRpcResponse {
-                        jsonrpc: "2.0".to_string(),
+                        json_rpc: "2.0".to_string(),
                         result: None,
                         error: Some(JsonRpcError {
                             code: -32601,
@@ -157,7 +157,7 @@ fn main() -> io::Result<()> {
             }
             _ => {
                 let resp = JsonRpcResponse {
-                    jsonrpc: "2.0".to_string(),
+                    json_rpc: "2.0".to_string(),
                     result: None,
                     error: Some(JsonRpcError {
                         code: -32601,

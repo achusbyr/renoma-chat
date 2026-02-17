@@ -111,3 +111,38 @@ pub async fn swipe_message(
     .await?;
     Ok(())
 }
+pub async fn fetch_plugins() -> Result<Vec<PluginManifest>, gloo_net::Error> {
+    Request::get(&format!("{}/plugins", API_BASE))
+        .send()
+        .await?
+        .json()
+        .await
+}
+
+pub async fn toggle_plugin(name: &str) -> Result<(), gloo_net::Error> {
+    Request::post(&format!("{}/plugins/{}/toggle", API_BASE, name))
+        .send()
+        .await?;
+    Ok(())
+}
+
+pub async fn discover_plugins() -> Result<(), gloo_net::Error> {
+    Request::post(&format!("{}/plugins/discover", API_BASE))
+        .send()
+        .await?;
+    Ok(())
+}
+
+pub async fn install_plugin(file: web_sys::File) -> Result<(), gloo_net::Error> {
+    let form_data = web_sys::FormData::new()
+        .map_err(|_| gloo_net::Error::GlooError("Failed to create FormData".to_string()))?;
+    form_data
+        .append_with_blob_and_filename("plugin", &file, &file.name())
+        .map_err(|_| gloo_net::Error::GlooError("Failed to append file to FormData".to_string()))?;
+
+    Request::post(&format!("{}/plugins/install", API_BASE))
+        .body(form_data)?
+        .send()
+        .await?;
+    Ok(())
+}
