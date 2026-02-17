@@ -1,3 +1,3 @@
 [workspace]
-members = ["frontend", "backend", "shared", "renoma-launcher", "xtask"]
+members = ["frontend", "backend", "shared", "renoma-launcher", "xtask", "examples/tools/dice_roll"]
 resolver = "2"

@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 tower-http = { version = "*", features = ["fs"] }
-tokio = { version = "*", features = ["full"] }
+tokio = { version = "*", features = ["rt-multi-thread", "macros"] }
 clap = { version = "*", features = ["derive"] }
 backend = { path = "../backend" }
 tracing-subscriber = "*"

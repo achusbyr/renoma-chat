@@ -2,6 +2,23 @@ use clap::Parser;
 
 mod cli;
 
+fn copy_dir(
+    src: impl AsRef<std::path::Path>,
+    dst: impl AsRef<std::path::Path>,
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(&dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            std::fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli::Cli::parse();
 
@@ -11,6 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cmd.current_dir("frontend");
             cmd.arg("build");
             cmd.spawn()?.wait()?;
+
+            copy_dir("frontend/styles", "frontend/dist/styles")?;
 
             let mut cmd = std::process::Command::new("cargo");
             cmd.arg("run")
@@ -42,25 +61,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cmd.arg("build").arg("--release");
             cmd.spawn()?.wait()?;
 
-            std::fs::create_dir_all("Renoma/dist")?;
-            std::fs::copy("target/release/renoma-launcher", "Renoma/renoma-launcher")?;
-
             let dist_path = std::path::Path::new("frontend/dist");
             if !dist_path.exists() {
-                return Err("frontend/dist directory not found. Did trunk build fail?".into());
+                return Err("frontend/dist directory not found.".into());
             }
 
-            for entry in std::fs::read_dir(dist_path)? {
-                let entry = entry?;
-                let file_name = entry.file_name();
-                std::fs::copy(
-                    entry.path(),
-                    format!(
-                        "Renoma/dist/{}",
-                        file_name.to_str().ok_or("Invalid file name")?
-                    ),
-                )?;
-            }
+            copy_dir("frontend/styles", "frontend/dist/styles")?;
+
+            std::fs::create_dir_all("Renoma/dist")?;
+            std::fs::copy("target/release/renoma-launcher", "Renoma/renoma-launcher")?;
+            copy_dir(dist_path, "Renoma/dist")?;
 
             Ok(())
         }

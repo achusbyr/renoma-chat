@@ -6,17 +6,6 @@ pub const ROLE_ASSISTANT: &str = "assistant";
 pub const ROLE_SYSTEM: &str = "system";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Character {
-    pub id: Uuid,
-    pub name: String,
-    pub description: String,
-    pub personality: String,
-    pub scenario: String,
-    pub first_message: String,
-    pub example_messages: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub id: Uuid,
     /// "user" or "assistant"
@@ -31,6 +20,23 @@ pub struct ChatMessage {
     #[serde(default)]
     /// Which alternative is currently shown (0 = primary content)
     pub active_index: usize,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub r#type: String, // usually "function"
+    pub function: FunctionCall,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
 }
 
 impl ChatMessage {
@@ -43,6 +49,8 @@ impl ChatMessage {
             sender_id: None,
             alternatives: Vec::new(),
             active_index: 0,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -59,6 +67,8 @@ impl ChatMessage {
             sender_id: Some(sender_id),
             alternatives: Vec::new(),
             active_index: 0,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -80,50 +90,6 @@ impl ChatMessage {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ChatParticipant {
-    pub character_id: Uuid,
-    pub is_active: bool, // Can take turns in group chat
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Chat {
-    pub id: Uuid,
-    pub character_id: Uuid,
-    pub messages: Vec<ChatMessage>,
-    #[serde(default)]
-    pub participants: Vec<ChatParticipant>,
-}
-
-// Request payloads
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CreateCharacterRequest {
-    pub name: String,
-    pub description: String,
-    pub personality: String,
-    pub scenario: String,
-    pub first_message: String,
-    pub example_messages: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CreateChatRequest {
-    pub character_id: Uuid,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CompletionRequest {
-    pub chat_id: Uuid,
-    pub regenerate: bool,
-    pub message_id: Option<Uuid>,
-    pub api_key: String,
-    pub api_base: Option<String>,
-    pub model: String,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<u16>,
-    pub reasoning_effort: String,
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EditMessageRequest {
     pub content: String,
@@ -140,27 +106,4 @@ pub enum SwipeDirection {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SwipeRequest {
     pub direction: SwipeDirection,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AppSettings {
-    pub api_key: String,
-    pub api_base: String,
-    pub model: String,
-    pub temperature: f32,
-    pub max_tokens: u16,
-    pub reasoning_effort: String,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            api_key: String::new(),
-            api_base: "https://openrouter.ai/api/v1".to_string(),
-            model: "tngtech/deepseek-r1t2-chimera:free".to_string(),
-            temperature: 0.7,
-            max_tokens: 4096,
-            reasoning_effort: "medium".to_string(),
-        }
-    }
 }

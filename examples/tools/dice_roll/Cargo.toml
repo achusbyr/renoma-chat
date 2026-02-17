@@ -1,9 +1,9 @@
 [package]
-name = "shared"
+name = "dice_roll"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-uuid = { version = "*", features = ["v7", "serde", "js"] }
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
+rand = "*"

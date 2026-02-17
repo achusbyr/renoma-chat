@@ -361,6 +361,8 @@ impl LocalDatabase {
                     sender_id: sender_id_str.and_then(|s| Uuid::parse_str(&s).ok()),
                     alternatives,
                     active_index: row.get::<i64, _>("active_index") as usize,
+                    tool_calls: None,
+                    tool_call_id: None,
                 }
             })
             .collect())
@@ -391,6 +393,8 @@ impl LocalDatabase {
             sender_id: sender_id_str.and_then(|s| Uuid::parse_str(&s).ok()),
             alternatives,
             active_index: row.get::<i64, _>("active_index") as usize,
+            tool_calls: None,
+            tool_call_id: None,
         }))
     }
 

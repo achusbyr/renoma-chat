@@ -91,6 +91,8 @@ impl PostgresDatabase {
                     sender_id: row.get("sender_id"),
                     alternatives,
                     active_index: row.get::<i64, _>("active_index") as usize,
+                    tool_calls: None,
+                    tool_call_id: None,
                 }
             })
             .collect())
@@ -119,6 +121,8 @@ impl PostgresDatabase {
             sender_id: row.get("sender_id"),
             alternatives,
             active_index: row.get::<i64, _>("active_index") as usize,
+            tool_calls: None,
+            tool_call_id: None,
         }))
     }
 

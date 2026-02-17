@@ -11,10 +11,13 @@ sqlx = { version = "*", features = [
     "uuid",
     "json",
 ] }
-tower-http = { version = "*", features = ["fs", "trace", "cors"] }
 async-openai = { version = "*", features = ["chat-completion"] }
 uuid = { version = "*", features = ["v4", "v7", "serde"] }
+tower-http = { version = "*", features = ["cors"] }
+tokio = { version = "*", features = ["process"] }
+serde = { version = "*", features = ["derive"] }
 shared = { path = "../shared" }
+is_executable = "*"
 async-stream = "*"
 async-trait = "*"
 serde_json = "*"

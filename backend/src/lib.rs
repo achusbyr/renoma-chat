@@ -1,15 +1,18 @@
 mod dbs;
 mod handlers;
 mod openai;
+pub mod plugins;
 
 use crate::dbs::Database;
 use crate::dbs::local::LocalDatabase;
 use crate::dbs::postgres::PostgresDatabase;
 use crate::handlers::{
     append_message, create_character, create_chat, delete_character, delete_chat, delete_message,
-    edit_message, get_chat, list_characters, list_chats, swipe_message,
+    edit_message, get_chat, list_characters, list_chats, list_plugins, swipe_message,
+    toggle_plugin,
 };
 use crate::openai::generate_response;
+use crate::plugins::PluginManager;
 use axum::{
     Router,
     routing::{delete, get, post, put},
@@ -21,6 +24,7 @@ use tower_http::cors::CorsLayer;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<dyn Database>,
+    pub plugins: PluginManager,
 }
 
 pub async fn init(router: Router<AppState>, config: DatabaseConfig) -> Router<()> {
@@ -29,7 +33,12 @@ pub async fn init(router: Router<AppState>, config: DatabaseConfig) -> Router<()
         DatabaseConfig::Postgres { url } => Arc::new(PostgresDatabase::new(&url).await),
     };
 
-    let state = AppState { db };
+    let plugins = PluginManager::new();
+    if let Err(e) = plugins.discover_plugins("./plugins").await {
+        tracing::error!("Failed to discover plugins: {:?}", e);
+    }
+
+    let state = AppState { db, plugins };
 
     router
         .route("/api/health", get(|| async { "OK" }))
@@ -50,6 +59,8 @@ pub async fn init(router: Router<AppState>, config: DatabaseConfig) -> Router<()
             post(swipe_message),
         )
         .route("/api/completion", post(generate_response))
+        .route("/api/plugins", get(list_plugins))
+        .route("/api/plugins/{name}/toggle", post(toggle_plugin))
         .route(
             "/favicon.ico",
             get(|| async {
