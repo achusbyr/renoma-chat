@@ -117,9 +117,10 @@ pub fn settings_modal() -> Html {
             let store = store.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if api::toggle_plugin(&name).await.is_ok()
-                    && let Ok(plugins) = api::fetch_plugins().await {
-                        store.dispatch(Action::SetPlugins(plugins));
-                    }
+                    && let Ok(plugins) = api::fetch_plugins().await
+                {
+                    store.dispatch(Action::SetPlugins(plugins));
+                }
             });
         })
     };
@@ -130,9 +131,10 @@ pub fn settings_modal() -> Html {
             let store = store.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if api::discover_plugins().await.is_ok()
-                    && let Ok(plugins) = api::fetch_plugins().await {
-                        store.dispatch(Action::SetPlugins(plugins));
-                    }
+                    && let Ok(plugins) = api::fetch_plugins().await
+                {
+                    store.dispatch(Action::SetPlugins(plugins));
+                }
             });
         })
     };
@@ -142,15 +144,17 @@ pub fn settings_modal() -> Html {
         Callback::from(move |e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             if let Some(files) = input.files()
-                && let Some(file) = files.get(0) {
-                    let store = store.clone();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        if api::install_plugin(file).await.is_ok()
-                            && let Ok(plugins) = api::fetch_plugins().await {
-                                store.dispatch(Action::SetPlugins(plugins));
-                            }
-                    });
-                }
+                && let Some(file) = files.get(0)
+            {
+                let store = store.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if api::install_plugin(file).await.is_ok()
+                        && let Ok(plugins) = api::fetch_plugins().await
+                    {
+                        store.dispatch(Action::SetPlugins(plugins));
+                    }
+                });
+            }
         })
     };
 

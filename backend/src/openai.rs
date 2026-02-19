@@ -13,7 +13,7 @@ use async_openai::{
 };
 use axum::{Json, extract::State, response::IntoResponse};
 use futures::StreamExt;
-use shared::models::{CompletionRequest, ROLE_ASSISTANT, ROLE_USER};
+use shared::models::{CompletionRequest, ROLE_ASSISTANT, ROLE_SYSTEM, ROLE_TOOL, ROLE_USER};
 use std::io::Error;
 
 const DEFAULT_API_BASE: &str = "https://openrouter.ai/api/v1";
@@ -90,7 +90,7 @@ fn build_conversation(
 
             let assistant_msg = assistant_msg_builder.build().unwrap_or_default();
             ChatCompletionRequestMessage::Assistant(assistant_msg)
-        } else if msg.role == "tool" {
+        } else if msg.role == ROLE_TOOL {
             let tool_call_id = msg.tool_call_id.clone().unwrap_or_default();
             let tool_msg = ChatCompletionRequestToolMessageArgs::default()
                 .content(content)
@@ -98,6 +98,12 @@ fn build_conversation(
                 .build()
                 .unwrap_or_default();
             ChatCompletionRequestMessage::Tool(tool_msg)
+        } else if msg.role == ROLE_SYSTEM {
+            let system_msg = ChatCompletionRequestSystemMessageArgs::default()
+                .content(content)
+                .build()
+                .unwrap_or_default();
+            ChatCompletionRequestMessage::System(system_msg)
         } else {
             continue;
         };
@@ -322,6 +328,11 @@ pub async fn generate_response(
                     }
                 }).collect();
 
+                // Signal tool calls to frontend
+                if let Ok(json) = serde_json::to_string(&tool_calls_model) {
+                    yield Ok(format!("data: [TOOL_CALLS] {}\n\n", json));
+                }
+
                 let assistant_chat_msg = {
                     let mut m = shared::models::ChatMessage::new(ROLE_ASSISTANT, full_response.clone());
                     m.tool_calls = Some(tool_calls_model);
@@ -333,7 +344,6 @@ pub async fn generate_response(
 
                 // 2. Execute Tools
                 for tc in &tool_calls_buffer {
-                    // Notify frontend?
 
                     let args = match serde_json::from_str::<serde_json::Value>(&tc.function.arguments) {
                         Ok(a) => a,
@@ -347,11 +357,12 @@ pub async fn generate_response(
                              current_conversation.push(ChatCompletionRequestMessage::Tool(tool_msg));
 
                              let db_tool_msg = {
-                                 let mut m = shared::models::ChatMessage::new("tool", format!("Error parsing arguments: {}", e));
+                                 let mut m = shared::models::ChatMessage::new(ROLE_TOOL, format!("Error parsing arguments: {}", e));
                                  m.tool_call_id = Some(tc.id.clone());
                                  m
                              };
                              let _ = state.db.append_message(payload.chat_id, db_tool_msg).await;
+                             yield Ok(format!("data: [TOOL_RESULT] {}\n\n", serde_json::to_string(&serde_json::json!({"id": tc.id, "error": format!("Error parsing arguments: {}", e)})).unwrap()));
                              continue;
                         }
                     };
@@ -367,11 +378,12 @@ pub async fn generate_response(
                              current_conversation.push(ChatCompletionRequestMessage::Tool(tool_msg));
 
                              let db_tool_msg = {
-                                 let mut m = shared::models::ChatMessage::new("tool", content);
+                                 let mut m = shared::models::ChatMessage::new(ROLE_TOOL, content.clone());
                                  m.tool_call_id = Some(tc.id.clone());
                                  m
                              };
                              let _ = state.db.append_message(payload.chat_id, db_tool_msg).await;
+                             yield Ok(format!("data: [TOOL_RESULT] {}\n\n", serde_json::to_string(&serde_json::json!({"id": tc.id, "result": content})).unwrap()));
                          }
                          Err(e) => {
                              let content = format!("Error executing tool: {}", e);
@@ -383,11 +395,12 @@ pub async fn generate_response(
                              current_conversation.push(ChatCompletionRequestMessage::Tool(tool_msg));
 
                              let db_tool_msg = {
-                                 let mut m = shared::models::ChatMessage::new("tool", content);
+                                 let mut m = shared::models::ChatMessage::new(ROLE_TOOL, content.clone());
                                  m.tool_call_id = Some(tc.id.clone());
                                  m
                              };
                              let _ = state.db.append_message(payload.chat_id, db_tool_msg).await;
+                             yield Ok(format!("data: [TOOL_RESULT] {}\n\n", serde_json::to_string(&serde_json::json!({"id": tc.id, "error": content})).unwrap()));
                          }
                     }
                 }

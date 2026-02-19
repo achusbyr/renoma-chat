@@ -2,7 +2,9 @@ use crate::api;
 use crate::store::{Action, StoreContext, StreamingContext};
 use futures::StreamExt;
 use gloo_net::http::Request;
-use shared::models::{ChatMessage, CompletionRequest, ROLE_ASSISTANT, ROLE_USER};
+use shared::models::{
+    ChatMessage, CompletionRequest, ROLE_ASSISTANT, ROLE_TOOL, ROLE_USER, ToolCall,
+};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Element, HtmlTextAreaElement, js_sys};
 use yew::prelude::*;
@@ -261,6 +263,10 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
     let is_regenerating =
         store.active_stream == Some(StreamingContext::Regeneration(props.message.id));
 
+    if props.message.role == ROLE_TOOL {
+        return html! {}; // Hidden from main list, rendered inside assistant bubble if needed
+    }
+
     html! {
         <div
             class={classes!("message", if is_user { "message-user" } else { "message-assistant" })}
@@ -289,12 +295,46 @@ pub fn message_bubble(props: &MessageBubbleProps) -> Html {
                     </div>
                 } else {
                     <div class="message-text">
-                        if is_regenerating && display_content.is_empty() {
+                        if is_regenerating && display_content.is_empty() && (props.message.tool_calls.as_ref().map(|tc| tc.is_empty()).unwrap_or(true)) {
                             <div class="regenerating-dots">{"..."}</div>
                         } else {
                             <super::markdown::Markdown content={display_content} />
                         }
                     </div>
+
+                    // Tool calls feedback
+                    if let Some(tool_calls) = &props.message.tool_calls {
+                        <div class="tool-calls-container">
+                            { for tool_calls.iter().map(|tc| {
+                                // Find corresponding tool result in chat history
+                                let result = store.active_chat.as_ref().and_then(|chat| {
+                                    chat.messages.iter().find(|m| m.role == ROLE_TOOL && m.tool_call_id == Some(tc.id.clone()))
+                                });
+
+                                html! {
+                                    <div class="tool-call-item">
+                                        <div class="tool-call-header">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                                <path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.5 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/>
+                                            </svg>
+                                            <span>{"Tool: "}{&tc.function.name}</span>
+                                            if result.is_none() {
+                                                <span class="tool-status working">{"Working..."}</span>
+                                            } else {
+                                                <span class="tool-status done">{"Done"}</span>
+                                            }
+                                        </div>
+                                        if let Some(res) = result {
+                                            <div class="tool-result-preview">
+                                                {res.content.chars().take(200).collect::<String>()}
+                                                if res.content.len() > 200 { {"..."} }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            })}
+                        </div>
+                    }
                 }
 
                 // Swipe navigation (if alternatives exist)
@@ -613,6 +653,36 @@ async fn process_completion_stream(
                             content: full_response.clone(),
                         });
                         break;
+                    }
+
+                    if let Some(calls_json) = data.strip_prefix("[TOOL_CALLS] ") {
+                        if let Ok(tool_calls) = serde_json::from_str::<Vec<ToolCall>>(calls_json) {
+                            store.dispatch(Action::UpdateMessageToolCalls {
+                                message_id,
+                                tool_calls,
+                            });
+                        }
+                        continue;
+                    }
+
+                    if let Some(result_json) = data.strip_prefix("[TOOL_RESULT] ") {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(result_json) {
+                            let tool_call_id = val
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            let content = val
+                                .get("result")
+                                .or(val.get("error"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+
+                            let mut msg = ChatMessage::new(ROLE_TOOL, content);
+                            msg.tool_call_id = tool_call_id;
+                            store.dispatch(Action::AppendMessage(msg));
+                        }
+                        continue;
                     }
 
                     // Parse the JSON-encoded chunk from the backend

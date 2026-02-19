@@ -73,6 +73,10 @@ pub enum Action {
         message_id: Uuid,
         content: String,
     },
+    UpdateMessageToolCalls {
+        message_id: Uuid,
+        tool_calls: Vec<ToolCall>,
+    },
     UpdateSettings(AppSettings),
     OpenModal(ModalType),
     CloseModal,
@@ -146,6 +150,16 @@ impl Reducible for State {
                     && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
                 {
                     msg.content = content;
+                }
+            }
+            Action::UpdateMessageToolCalls {
+                message_id,
+                tool_calls,
+            } => {
+                if let Some(chat) = &mut next.active_chat
+                    && let Some(msg) = chat.messages.iter_mut().find(|m| m.id == message_id)
+                {
+                    msg.tool_calls = Some(tool_calls);
                 }
             }
             Action::UpdateSettings(settings) => {

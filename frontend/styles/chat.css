@@ -399,3 +399,68 @@ textarea.chat-input {
   cursor: not-allowed;
   transform: none;
 }
+
+/* Tool call styles */
+.tool-calls-container {
+  margin-top: 10px;
+  border-top: 1px solid var(--border-color, #444);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-call-item {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 0.85em;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted, #aaa);
+  margin-bottom: 4px;
+}
+
+.tool-status {
+  font-size: 0.8em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.tool-status.working {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  animation: pulse 1.5s infinite;
+}
+
+.tool-status.done {
+  background: rgba(40, 167, 69, 0.2);
+  color: #28a745;
+}
+
+.tool-result-preview {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  overflow-x: auto;
+  max-height: 100px;
+  white-space: pre-wrap;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}

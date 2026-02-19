@@ -40,12 +40,8 @@ pub fn char_sidebar() -> Html {
         let store = store.clone();
         Callback::from(move |id: uuid::Uuid| {
             if store.active_character_id == Some(id) {
-                // Already selected — toggle: deselect character
-                store.dispatch(Action::CloseChat);
-                // Reset character selection to collapse the chat list
-                store.dispatch(Action::SelectCharacter(id));
-                // Re-select to re-trigger effect or just keep it as is
-                // Actually, toggling is complex, let's just keep it selected
+                // If already selected, we don't need to do anything as the chats are already loaded.
+                // Re-dispatching SelectCharacter(id) would be redundant.
                 return;
             }
             store.dispatch(Action::SelectCharacter(id));
