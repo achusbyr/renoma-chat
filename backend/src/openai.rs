@@ -113,6 +113,37 @@ fn build_conversation(
     conversation
 }
 
+fn get_openai_tools(
+    available_tools: Vec<shared::models::Tool>,
+) -> Option<Vec<ChatCompletionTools>> {
+    if available_tools.is_empty() {
+        return None;
+    }
+
+    Some(
+        available_tools
+            .into_iter()
+            .map(|t| {
+                ChatCompletionTools::Function(ChatCompletionTool {
+                    function: FunctionObject {
+                        name: t.name,
+                        description: Some(t.description),
+                        parameters: Some(t.parameters),
+                        strict: Some(false),
+                    },
+                })
+            })
+            .collect(),
+    )
+}
+
+#[derive(Clone, Default)]
+struct ToolCallBuffer {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
 pub async fn generate_response(
     State(state): State<AppState>,
     Json(payload): Json<CompletionRequest>,
@@ -174,35 +205,15 @@ pub async fn generate_response(
     let character = state.db.get_character(chat.character_id).await.ok();
 
     // Initial conversation build
-    // We might need to loop if tools are called, so we'll maintain a local conversation buffer
     let conversation = build_conversation(&chat.messages, character.as_ref(), truncate_at);
 
     // Fetch available tools
     let available_tools = state.plugins.get_all_tools().await;
-    let openai_tools: Option<Vec<ChatCompletionTools>> = if !available_tools.is_empty() {
-        Some(
-            available_tools
-                .into_iter()
-                .map(|t| {
-                    ChatCompletionTools::Function(ChatCompletionTool {
-                        function: FunctionObject {
-                            name: t.name,
-                            description: Some(t.description),
-                            parameters: Some(t.parameters),
-                            strict: Some(false),
-                        },
-                    })
-                })
-                .collect(),
-        )
-    } else {
-        None
-    };
+    let openai_tools = get_openai_tools(available_tools);
 
     let body = axum::body::Body::from_stream(async_stream::stream! {
-        let mut current_conversation = conversation; // We work on a copy
+        let mut current_conversation = conversation;
 
-        // Loop for tool calls (max 5 turns to prevent infinite loops)
         for _turn in 0..5 {
             let mut builder = CreateChatCompletionRequestArgs::default();
             builder
@@ -241,33 +252,21 @@ pub async fn generate_response(
             };
 
             let mut full_response = String::new();
-
-            // Temporary buffer for aggregating tool call chunks
-            #[derive(Clone, Default)]
-            struct ToolCallBuffer {
-                id: String,
-                name: String,
-                arguments: String,
-            }
             let mut tool_calls_map: std::collections::HashMap<u32, ToolCallBuffer> = std::collections::HashMap::new();
 
             while let Some(result) = stream.next().await {
                 match result {
                     Ok(response) => {
                         if let Some(choice) = response.choices.first() {
-                            // Handle content
                             if let Some(content) = &choice.delta.content {
                                 full_response.push_str(content);
                                 let encoded = serde_json::to_string(content).unwrap_or_else(|_| format!("\"{}\"", content.replace('"', "\\\"")));
                                 yield Ok(format!("data: {}\n\n", encoded));
                             }
 
-                            // Handle tool calls aggregation
                             if let Some(tcs) = &choice.delta.tool_calls {
                                 for tc in tcs {
-                                    let index = tc.index;
-                                    let entry = tool_calls_map.entry(index).or_default();
-
+                                    let entry = tool_calls_map.entry(tc.index).or_default();
                                     if let Some(id) = &tc.id { entry.id.push_str(id); }
                                     if let Some(function) = &tc.function {
                                         if let Some(name) = &function.name { entry.name.push_str(name); }
@@ -283,9 +282,7 @@ pub async fn generate_response(
                 }
             }
 
-            // Stream finished. Check if we have tool calls.
             if !tool_calls_map.is_empty() {
-                // Convert map to sorted vec
                 let mut indices: Vec<u32> = tool_calls_map.keys().cloned().collect();
                 indices.sort();
 
@@ -302,10 +299,6 @@ pub async fn generate_response(
                     }
                 }
 
-                // We have tool calls. Execute them.
-
-                // 1. Append Assistant Message with Tool Calls to conversation
-                // Wrap in enum
                 let tool_calls_enum: Vec<ChatCompletionMessageToolCalls> = tool_calls_buffer.iter().map(|tc| {
                     ChatCompletionMessageToolCalls::Function(tc.clone())
                 }).collect();
@@ -316,7 +309,6 @@ pub async fn generate_response(
                     .unwrap();
                 current_conversation.push(ChatCompletionRequestMessage::Assistant(assistant_msg_req));
 
-                // Persist to DB (As assistant message but with tool_calls)
                 let tool_calls_model: Vec<shared::models::ToolCall> = tool_calls_buffer.iter().map(|tc| {
                     shared::models::ToolCall {
                         id: tc.id.clone(),
@@ -328,7 +320,6 @@ pub async fn generate_response(
                     }
                 }).collect();
 
-                // Signal tool calls to frontend
                 if let Ok(json) = serde_json::to_string(&tool_calls_model) {
                     yield Ok(format!("data: [TOOL_CALLS] {}\n\n", json));
                 }
@@ -342,27 +333,25 @@ pub async fn generate_response(
                      yield Ok(format!("data: [ERROR] Failed to save tool calls: {}\n\n", e));
                 }
 
-                // 2. Execute Tools
                 for tc in &tool_calls_buffer {
-
                     let args = match serde_json::from_str::<serde_json::Value>(&tc.function.arguments) {
                         Ok(a) => a,
                         Err(e) => {
-                             // Tool error
-                             let tool_msg = ChatCompletionRequestToolMessageArgs::default()
-                                .content(format!("Error parsing arguments: {}", e))
-                                .tool_call_id(tc.id.clone())
-                                .build()
-                                .unwrap();
-                             current_conversation.push(ChatCompletionRequestMessage::Tool(tool_msg));
+                             let content = format!("Error parsing arguments: {}", e);
+                             current_conversation.push(ChatCompletionRequestMessage::Tool(
+                                 ChatCompletionRequestToolMessageArgs::default()
+                                    .content(content.clone())
+                                    .tool_call_id(tc.id.clone())
+                                    .build()
+                                    .unwrap()
+                             ));
 
-                             let db_tool_msg = {
-                                 let mut m = shared::models::ChatMessage::new(ROLE_TOOL, format!("Error parsing arguments: {}", e));
+                             let _ = state.db.append_message(payload.chat_id, {
+                                 let mut m = shared::models::ChatMessage::new(ROLE_TOOL, content.clone());
                                  m.tool_call_id = Some(tc.id.clone());
                                  m
-                             };
-                             let _ = state.db.append_message(payload.chat_id, db_tool_msg).await;
-                             yield Ok(format!("data: [TOOL_RESULT] {}\n\n", serde_json::to_string(&serde_json::json!({"id": tc.id, "error": format!("Error parsing arguments: {}", e)})).unwrap()));
+                             }).await;
+                             yield Ok(format!("data: [TOOL_RESULT] {}\n\n", serde_json::to_string(&serde_json::json!({"id": tc.id, "error": content})).unwrap()));
                              continue;
                         }
                     };
@@ -370,46 +359,42 @@ pub async fn generate_response(
                     match state.plugins.call_tool(&tc.function.name, args).await {
                          Ok(result) => {
                              let content = result.to_string();
-                             let tool_msg = ChatCompletionRequestToolMessageArgs::default()
-                                .content(content.clone())
-                                .tool_call_id(tc.id.clone())
-                                .build()
-                                .unwrap();
-                             current_conversation.push(ChatCompletionRequestMessage::Tool(tool_msg));
+                             current_conversation.push(ChatCompletionRequestMessage::Tool(
+                                 ChatCompletionRequestToolMessageArgs::default()
+                                    .content(content.clone())
+                                    .tool_call_id(tc.id.clone())
+                                    .build()
+                                    .unwrap()
+                             ));
 
-                             let db_tool_msg = {
+                             let _ = state.db.append_message(payload.chat_id, {
                                  let mut m = shared::models::ChatMessage::new(ROLE_TOOL, content.clone());
                                  m.tool_call_id = Some(tc.id.clone());
                                  m
-                             };
-                             let _ = state.db.append_message(payload.chat_id, db_tool_msg).await;
+                             }).await;
                              yield Ok(format!("data: [TOOL_RESULT] {}\n\n", serde_json::to_string(&serde_json::json!({"id": tc.id, "result": content})).unwrap()));
                          }
                          Err(e) => {
                              let content = format!("Error executing tool: {}", e);
-                             let tool_msg = ChatCompletionRequestToolMessageArgs::default()
-                                .content(content.clone())
-                                .tool_call_id(tc.id.clone())
-                                .build()
-                                .unwrap();
-                             current_conversation.push(ChatCompletionRequestMessage::Tool(tool_msg));
+                             current_conversation.push(ChatCompletionRequestMessage::Tool(
+                                 ChatCompletionRequestToolMessageArgs::default()
+                                    .content(content.clone())
+                                    .tool_call_id(tc.id.clone())
+                                    .build()
+                                    .unwrap()
+                             ));
 
-                             let db_tool_msg = {
+                             let _ = state.db.append_message(payload.chat_id, {
                                  let mut m = shared::models::ChatMessage::new(ROLE_TOOL, content.clone());
                                  m.tool_call_id = Some(tc.id.clone());
                                  m
-                             };
-                             let _ = state.db.append_message(payload.chat_id, db_tool_msg).await;
+                             }).await;
                              yield Ok(format!("data: [TOOL_RESULT] {}\n\n", serde_json::to_string(&serde_json::json!({"id": tc.id, "error": content})).unwrap()));
                          }
                     }
                 }
-
-                // Loop continues to next turn
                 continue;
-
             } else {
-                // No tool calls, standard finish.
                 if !full_response.is_empty() {
                     let res = if payload.regenerate && let Some(msg_id) = payload.message_id {
                          state.db.append_alternative(payload.chat_id, msg_id, full_response).await

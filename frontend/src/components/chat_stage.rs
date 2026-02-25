@@ -590,6 +590,77 @@ pub fn chat_stage() -> Html {
     }
 }
 
+/// Processes a single line of SSE data and updates the store
+fn handle_sse_line(
+    store: &StoreContext,
+    message_id: uuid::Uuid,
+    full_response: &mut String,
+    line: &str,
+) -> bool {
+    let Some(data) = line.strip_prefix("data: ") else {
+        return true;
+    };
+    let data = data.trim_end();
+
+    if data == "[DONE]" {
+        return false;
+    }
+
+    if data.starts_with("[ERROR]") {
+        tracing::error!("Backend error in stream: {}", data);
+        full_response.push_str(data);
+        store.dispatch(Action::UpdateMessageContent {
+            message_id,
+            content: full_response.clone(),
+        });
+        return false;
+    }
+
+    if let Some(calls_json) = data.strip_prefix("[TOOL_CALLS] ") {
+        if let Ok(tool_calls) = serde_json::from_str::<Vec<ToolCall>>(calls_json) {
+            store.dispatch(Action::UpdateMessageToolCalls {
+                message_id,
+                tool_calls,
+            });
+        }
+        return true;
+    }
+
+    if let Some(result_json) = data.strip_prefix("[TOOL_RESULT] ") {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(result_json) {
+            let tool_call_id = val
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let content = val
+                .get("result")
+                .or(val.get("error"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let mut msg = ChatMessage::new(ROLE_TOOL, content);
+            msg.tool_call_id = tool_call_id;
+            store.dispatch(Action::AppendMessage(msg));
+        }
+        return true;
+    }
+
+    // Parse the JSON-encoded chunk from the backend
+    if let Ok(content_chunk) = serde_json::from_str::<String>(data) {
+        full_response.push_str(&content_chunk);
+    } else {
+        full_response.push_str(data);
+    }
+
+    store.dispatch(Action::UpdateMessageContent {
+        message_id,
+        content: full_response.clone(),
+    });
+
+    true
+}
+
 /// Helper to process the completion stream and update the store
 async fn process_completion_stream(
     store: StoreContext,
@@ -623,7 +694,7 @@ async fn process_completion_stream(
         let mut full_response = String::new();
         let mut buffer = Vec::new();
 
-        while let Some(result) = stream.next().await {
+        'outer: while let Some(result) = stream.next().await {
             let chunk = match result {
                 Ok(chunk) => chunk,
                 Err(e) => {
@@ -635,68 +706,12 @@ async fn process_completion_stream(
             let bytes = js_sys::Uint8Array::new(&chunk).to_vec();
             buffer.extend_from_slice(&bytes);
 
-            // Process SSE data: chunks
             while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
                 let line_bytes = buffer.drain(..pos + 1).collect::<Vec<u8>>();
                 let line = String::from_utf8_lossy(&line_bytes);
 
-                if let Some(data) = line.strip_prefix("data: ") {
-                    let data = data.trim_end(); // Only trim trailing newlines/spaces from the SSE data: line itself
-                    if data == "[DONE]" {
-                        break;
-                    }
-                    if data.starts_with("[ERROR]") {
-                        tracing::error!("Backend error in stream: {}", data);
-                        full_response.push_str(data);
-                        store.dispatch(Action::UpdateMessageContent {
-                            message_id,
-                            content: full_response.clone(),
-                        });
-                        break;
-                    }
-
-                    if let Some(calls_json) = data.strip_prefix("[TOOL_CALLS] ") {
-                        if let Ok(tool_calls) = serde_json::from_str::<Vec<ToolCall>>(calls_json) {
-                            store.dispatch(Action::UpdateMessageToolCalls {
-                                message_id,
-                                tool_calls,
-                            });
-                        }
-                        continue;
-                    }
-
-                    if let Some(result_json) = data.strip_prefix("[TOOL_RESULT] ") {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(result_json) {
-                            let tool_call_id = val
-                                .get("id")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string());
-                            let content = val
-                                .get("result")
-                                .or(val.get("error"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-
-                            let mut msg = ChatMessage::new(ROLE_TOOL, content);
-                            msg.tool_call_id = tool_call_id;
-                            store.dispatch(Action::AppendMessage(msg));
-                        }
-                        continue;
-                    }
-
-                    // Parse the JSON-encoded chunk from the backend
-                    if let Ok(content_chunk) = serde_json::from_str::<String>(data) {
-                        full_response.push_str(&content_chunk);
-                    } else {
-                        // Fallback to raw data if JSON parsing fails (backwards compatibility or noise)
-                        full_response.push_str(data);
-                    }
-
-                    store.dispatch(Action::UpdateMessageContent {
-                        message_id,
-                        content: full_response.clone(),
-                    });
+                if !handle_sse_line(&store, message_id, &mut full_response, &line) {
+                    break 'outer;
                 }
             }
         }
